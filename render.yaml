@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: ai-interviewer-api-harlguo
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: AUTH_MODE
+        value: supabase
+      - key: SUPABASE_URL
+        value: https://mzcxbdnokugotzldmkmq.supabase.co
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com
+      - key: DEEPSEEK_MODEL
+        value: deepseek-flash
+      - key: ALLOWED_ORIGINS
+        value: https://ai-interviewer-web-harlguo.onrender.com
+
+  - type: web
+    name: ai-interviewer-web-harlguo
+    runtime: static
+    buildCommand: npm ci && npx expo export --platform web
+    staticPublishPath: dist
+    autoDeployTrigger: commit
+    envVars:
+      - key: EXPO_PUBLIC_API_BASE_URL
+        value: https://ai-interviewer-api-harlguo.onrender.com
+      - key: EXPO_PUBLIC_SUPABASE_URL
+        value: https://mzcxbdnokugotzldmkmq.supabase.co
+      - key: EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), geolocation=(), microphone=(self)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

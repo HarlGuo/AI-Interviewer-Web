@@ -1,0 +1,4 @@
+interface:
+  display_name: "可验证简历解析"
+  short_description: "使用确定性提取、AI复核、程序校验和用户确认解析简历"
+  default_prompt: "使用 $verified-resume-parsing 解析并复核这份简历。"
