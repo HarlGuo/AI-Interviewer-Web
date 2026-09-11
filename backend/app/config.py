@@ -24,7 +24,7 @@ _load_local_env()
 class Settings:
     deepseek_api_key: str | None = os.getenv("DEEPSEEK_API_KEY")
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
-    deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
+    deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
     allowed_origins: tuple[str, ...] = tuple(filter(None, os.getenv("ALLOWED_ORIGINS", "http://localhost:8081").split(",")))
     auth_mode: str = os.getenv("AUTH_MODE", "development").strip().lower()
     supabase_url: str | None = os.getenv("SUPABASE_URL", "").rstrip("/") or None

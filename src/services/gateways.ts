@@ -2,7 +2,9 @@ import { InterviewQuestion, InterviewReport, InterviewSession, ResumeFile, Resum
 import { Platform } from 'react-native';
 import { getAccessToken } from '@/services/supabase';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+const API_BASE_URL = configuredApiBaseUrl
+  ?? (typeof window !== 'undefined' ? window.location.origin : undefined);
 const REQUEST_TIMEOUT_MS = 65_000;
 const INTERVIEW_TURN_TIMEOUT_MS = 130_000;
 const REPORT_TIMEOUT_MS = 210_000;

@@ -6,13 +6,14 @@ const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
 const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
 
 export const isCloudAuthConfigured = Boolean(url && publishableKey);
+const isBrowser = typeof window !== 'undefined';
 
 export const supabase = isCloudAuthConfigured
   ? createClient(url!, publishableKey!, {
       auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
+        ...(isBrowser ? { storage: AsyncStorage } : {}),
+        autoRefreshToken: isBrowser,
+        persistSession: isBrowser,
         detectSessionInUrl: false,
       },
     })

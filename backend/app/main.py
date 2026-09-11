@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from httpx import HTTPError
 
 from .ai_resume_reviewer import review_resume
@@ -80,3 +84,27 @@ async def create_report(request: ReportRequest, _user: CurrentUser = Depends(get
         raise HTTPException(status_code=503, detail="报告服务尚未配置") from error
     except (HTTPError, KeyError, ValueError, RuntimeError) as error:
         raise HTTPException(status_code=502, detail="报告生成失败，请稍后重试") from error
+
+
+# FunctionGraph can serve the exported Expo Web client and API from one HTTP
+# function. Local development keeps using the separate Expo dev server because
+# this directory only exists in production packages.
+frontend_dist = Path(__file__).resolve().parents[2] / "dist"
+if frontend_dist.is_dir():
+    expo_assets = frontend_dist / "_expo"
+    if expo_assets.is_dir():
+        app.mount("/_expo", StaticFiles(directory=expo_assets), name="expo-assets")
+
+    @app.get("/{web_path:path}", include_in_schema=False)
+    async def serve_web(web_path: str) -> FileResponse:
+        relative = web_path.strip("/")
+        candidates = []
+        if relative:
+            candidates.extend((frontend_dist / relative, frontend_dist / f"{relative}.html"))
+        else:
+            candidates.append(frontend_dist / "index.html")
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            if resolved.is_file() and frontend_dist.resolve() in resolved.parents:
+                return FileResponse(resolved)
+        return FileResponse(frontend_dist / "index.html")
