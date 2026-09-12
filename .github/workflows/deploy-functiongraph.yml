@@ -46,6 +46,9 @@ jobs:
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
         run: ./scripts/build-functiongraph-package.sh
 
+      - name: 验证部署包可导入
+        run: PYTHONPATH=build/functiongraph python -c "import app.main; import langgraph; import pdfplumber"
+
       - name: 安装华为云官方 SDK
         run: python -m pip install --quiet --disable-pip-version-check -r scripts/requirements-deploy.txt
 

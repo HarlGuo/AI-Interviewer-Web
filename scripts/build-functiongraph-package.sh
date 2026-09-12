@@ -47,13 +47,26 @@ rm -rf \
   "$BUILD_ROOT/pypdfium2_cli" \
   "$BUILD_ROOT/pypdfium2_raw"
 
+# LangSmith 仅在开启链路追踪时才使用 zstandard；本项目未启用追踪。
+# 删除该可选扩展及缓存，避免 Base64 后的请求体超过 FunctionGraph API 网关限制。
+rm -rf \
+  "$BUILD_ROOT/zstandard" \
+  "$BUILD_ROOT/zstandard-"*.dist-info
+find "$BUILD_ROOT" -type d -name '__pycache__' -prune -exec rm -rf {} +
+find "$BUILD_ROOT" -type d -name tests -prune -exec rm -rf {} +
+
+# GitHub Actions 在 Linux 上构建时移除二进制符号；本地 macOS 构建跳过此步骤。
+if [ "$(uname -s)" = "Linux" ] && command -v strip >/dev/null 2>&1; then
+  find "$BUILD_ROOT" -type f -name '*.so' -exec strip --strip-unneeded {} +
+fi
+
 cd "$BUILD_ROOT"
 rm -f "$PACKAGE_PATH"
 zip -q -9 -r "$PACKAGE_PATH" .
 
 PACKAGE_MB=$(du -m "$PACKAGE_PATH" | awk '{print $1}')
 echo "已生成：${PACKAGE_PATH}（约 ${PACKAGE_MB} MB）"
-if [ "$PACKAGE_MB" -gt 40 ]; then
-  echo "程序包超过 FunctionGraph ZIP 接口的 40 MB 限制，请缩减依赖或改为通过 OBS 部署。" >&2
+if [ "$PACKAGE_MB" -gt 28 ]; then
+  echo "程序包超过 FunctionGraph API 直传安全阈值 28 MB；请改用 OBS 部署，不再删除运行依赖。" >&2
   exit 1
 fi
