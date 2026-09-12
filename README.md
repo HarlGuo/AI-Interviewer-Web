@@ -514,7 +514,7 @@ AI 复核不能保证简历绝对零错误，也不验证简历陈述真实性�
 ### 第一次配置
 
 1. 在华为云创建一个专门用于自动部署的 IAM 用户，不要使用主账号永久访问密钥。
-2. 给该用户授予更新目标函数代码所需的最小权限 `functiongraph:function:updateFunctionCode`，然后创建一组 AK/SK。
+2. 给该用户授予更新目标函数代码所需的最小权限 `FunctionGraph:function:updateCode`，然后创建一组 AK/SK。
 3. 打开 GitHub 仓库的 `Settings` → `Secrets and variables` → `Actions`。
 4. 在 `Secrets` 中添加：
    - `HUAWEICLOUD_ACCESS_KEY_ID`：IAM 用户的 AK。
