@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
 import { AppState, InterviewMode, InterviewQuestion, InterviewReport, ResumeFile, TargetRole, TrainingFocus } from '@/domain/models';
+import { loadCloudResume, removeCloudResume, saveCloudResume } from '@/services/resume-cloud';
 import { useAuth } from '@/state/auth-context';
 
 const STORAGE_KEY_PREFIX = '@ai-interviewer/app-state/v4';
@@ -23,7 +24,7 @@ type ContextValue = {
 const AppContext = createContext<ContextValue | null>(null);
 
 export function AppProvider({ children }: PropsWithChildren) {
-  const { localUserId } = useAuth();
+  const { cloudEnabled, localUserId, user } = useAuth();
   const storageKey = `${STORAGE_KEY_PREFIX}/${localUserId}`;
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
@@ -31,16 +32,28 @@ export function AppProvider({ children }: PropsWithChildren) {
     const hydrate = async () => {
       await AsyncStorage.multiRemove(LEGACY_STORAGE_KEYS);
       const raw = await AsyncStorage.getItem(storageKey);
-      setState(raw ? { ...initialState, ...JSON.parse(raw) } : initialState);
+      const localState = raw ? { ...initialState, ...JSON.parse(raw) } : initialState;
+      if (cloudEnabled && user) {
+        const resume = await loadCloudResume(user.id);
+        setState({ ...localState, resume });
+      } else {
+        setState(localState);
+      }
     };
     void hydrate().catch(() => undefined).finally(() => setHydrated(true));
-  }, [storageKey]);
+  }, [cloudEnabled, storageKey, user]);
 
   const commit = async (next: AppState) => { setState(next); await AsyncStorage.setItem(storageKey, JSON.stringify(next)); };
   const value = useMemo<ContextValue>(() => ({
     state, hydrated,
-    saveResume: async (resume) => commit({ ...state, resume }),
-    removeResume: async () => commit({ ...state, resume: null }),
+    saveResume: async (resume) => {
+      const savedResume = cloudEnabled && user ? await saveCloudResume(user.id, resume) : resume;
+      await commit({ ...state, resume: savedResume });
+    },
+    removeResume: async () => {
+      if (cloudEnabled && user) await removeCloudResume(user.id, state.resume);
+      await commit({ ...state, resume: null });
+    },
     saveTarget: async (target) => commit({ ...state, target }),
     startDraftSession: async (input) => commit({ ...state, target: input.target, report: null, activeSession: { id: `${Date.now()}`, ...input, status: 'draft', interviewId: null, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } }),
     activateSession: async (interviewId, question, totalMainQuestions) => { if (state.activeSession) await commit({ ...state, activeSession: { ...state.activeSession, interviewId, questions: [question], currentIndex: 0, totalMainQuestions, status: 'active', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } }); },
@@ -56,7 +69,7 @@ export function AppProvider({ children }: PropsWithChildren) {
     setSessionStatus: async (status) => { if (state.activeSession) await commit({ ...state, activeSession: { ...state.activeSession, status, updatedAt: new Date().toISOString() } }); },
     saveReport: async (report) => commit({ ...state, report }),
     clearSession: async () => commit({ ...state, activeSession: null, report: null }),
-  }), [state, hydrated, storageKey]);
+  }), [cloudEnabled, state, hydrated, storageKey, user]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 

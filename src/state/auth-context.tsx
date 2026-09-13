@@ -8,7 +8,7 @@ type AuthContextValue = {
   cloudEnabled: boolean;
   session: Session | null;
   user: User | null;
-  accountStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | null;
+  accountStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | 'deletion_pending' | 'disabled' | null;
   statusLoading: boolean;
   localUserId: string;
   register: (email: string, password: string) => Promise<void>;
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!supabase) throw new Error('云端账号服务尚未配置');
       const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
       if (error) throw error;
-      if (!data.session) throw new Error('注册成功，但项目仍要求验证邮箱。请联系管理员关闭 Confirm email。');
+      if (!data.user) throw new Error('注册申请未能创建，请稍后重试。');
     },
     signIn: async (email, password) => {
       if (!supabase) throw new Error('云端账号服务尚未配置');

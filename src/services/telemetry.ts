@@ -1,5 +1,5 @@
 export type AnalyticsEvent =
-  | 'interview_entry_clicked' | 'resume_upload_started' | 'resume_upload_succeeded' | 'resume_parse_failed'
+  | 'interview_entry_clicked' | 'resume_upload_started' | 'resume_upload_succeeded' | 'resume_upload_failed' | 'resume_parse_failed'
   | 'interview_config_completed' | 'interview_started' | 'question_answered' | 'followup_triggered'
   | 'interview_paused' | 'interview_completed' | 'report_viewed' | 'report_advice_viewed'
   | 'retry_interview_clicked' | 'history_report_viewed' | 'purchase_clicked';

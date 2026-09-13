@@ -12,11 +12,15 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const submit = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError('请输入有效的邮箱地址。');
     if (password.length < 8) return setError('密码至少需要 8 个字符。');
-    setBusy(true); setError('');
-    try { await (mode === 'register' ? register(email, password) : signIn(email, password)); }
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await (mode === 'register' ? register(email, password) : signIn(email, password));
+      if (mode === 'register') setMessage('注册成功，请等待管理员确认。');
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : '操作失败，请稍后重试。'); }
     finally { setBusy(false); }
   };
@@ -28,9 +32,10 @@ export default function LoginScreen() {
       <Text style={styles.label}>密码</Text>
       <TextInput accessibilityLabel="密码" autoCapitalize="none" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} onChangeText={setPassword} placeholder="至少 8 个字符" secureTextEntry style={styles.input} value={password} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {message ? <Text style={styles.success}>{message}</Text> : null}
       {busy ? <ActivityIndicator color={colors.primary} /> : null}
       <Button disabled={busy} label={mode === 'register' ? '提交注册申请' : '登录'} onPress={submit} />
-      <Button disabled={busy} label={mode === 'register' ? '已有账号，返回登录' : '没有账号，申请内测'} onPress={() => { setMode(mode === 'register' ? 'login' : 'register'); setError(''); }} variant="ghost" />
+      <Button disabled={busy} label={mode === 'register' ? '已有账号，返回登录' : '没有账号，申请内测'} onPress={() => { setMode(mode === 'register' ? 'login' : 'register'); setError(''); setMessage(''); }} variant="ghost" />
     </Card>
     <Text style={styles.notice}>测试阶段暂不验证邮箱。请使用你能长期访问的真实邮箱；正式上线前将启用邮箱验证、找回密码、用户协议和隐私政策。</Text>
   </Screen>;
@@ -39,5 +44,5 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   hero: { marginTop: spacing.xl, marginBottom: spacing.lg }, title: { ...typography.title, color: colors.ink }, subtitle: { color: colors.muted, lineHeight: 21, marginTop: 8 },
   label: { color: colors.ink, fontWeight: '700', marginBottom: 7 }, input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 14, minHeight: 50, color: colors.ink, backgroundColor: colors.surface, marginBottom: spacing.md },
-  error: { color: colors.danger, lineHeight: 20, marginBottom: spacing.sm }, notice: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  error: { color: colors.danger, lineHeight: 20, marginBottom: spacing.sm }, success: { color: colors.success, lineHeight: 20, marginBottom: spacing.sm, fontWeight: '700' }, notice: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });

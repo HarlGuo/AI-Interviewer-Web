@@ -25,8 +25,13 @@ export default function ResumeScreen() {
     const asset = result.assets[0];
     if (!asset.name.toLowerCase().endsWith('.pdf') && asset.mimeType !== 'application/pdf') return setError('文件格式不支持，请重新选择 PDF。');
     if (typeof asset.size === 'number' && asset.size > MAX_BYTES) return setError('文件超过 10 MB，请压缩后重新上传。');
-    await saveResume({ id: `${Date.now()}`, name: asset.name, uri: asset.uri, size: asset.size ?? null, status: 'uploaded', uploadedAt: new Date().toISOString(), sections: [], warnings: [], reviewStatus: 'pending' });
-    track('resume_upload_succeeded', { size_bytes: asset.size ?? 0 });
+    try {
+      await saveResume({ id: `${Date.now()}`, name: asset.name, uri: asset.uri, size: asset.size ?? null, status: 'uploaded', uploadedAt: new Date().toISOString(), sections: [], warnings: [], reviewStatus: 'pending' });
+      track('resume_upload_succeeded', { size_bytes: asset.size ?? 0 });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '简历上传失败，请稍后重试。');
+      track('resume_upload_failed');
+    }
   };
 
   const parse = async () => {

@@ -1,6 +1,6 @@
 export type ResumeStatus = 'uploaded' | 'parsing' | 'reviewed' | 'confirmed' | 'failed';
 export type ResumeSection = { title: string; content: string };
-export type ResumeFile = { id: string; name: string; uri: string; size: number | null; status: ResumeStatus; uploadedAt: string; sections: ResumeSection[]; warnings: string[]; reviewStatus: 'pending' | 'ai_verified' };
+export type ResumeFile = { id: string; name: string; uri: string; size: number | null; status: ResumeStatus; uploadedAt: string; sections: ResumeSection[]; warnings: string[]; reviewStatus: 'pending' | 'ai_verified'; objectPath?: string | null };
 export type TargetRole = { title: string; jd: string; savedAt: string };
 export type InterviewMode = 'formal' | 'focused';
 export type TrainingFocus = 'self-introduction' | 'resume-deep-dive' | 'behavioral' | 'role-specific';
