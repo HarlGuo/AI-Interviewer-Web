@@ -2,8 +2,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
-const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+type RuntimeConfig = {
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
+};
+
+declare global {
+  var __AI_INTERVIEWER_CONFIG__: RuntimeConfig | undefined;
+}
+
+const runtimeConfig = typeof globalThis !== 'undefined'
+  ? globalThis.__AI_INTERVIEWER_CONFIG__
+  : undefined;
+const url = (runtimeConfig?.supabaseUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL)?.trim();
+const publishableKey = (runtimeConfig?.supabasePublishableKey ?? process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY)?.trim();
 
 export const isCloudAuthConfigured = Boolean(url && publishableKey);
 const isBrowser = typeof window !== 'undefined';

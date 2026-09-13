@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from httpx import HTTPError
 
@@ -94,6 +95,19 @@ if frontend_dist.is_dir():
     expo_assets = frontend_dist / "_expo"
     if expo_assets.is_dir():
         app.mount("/_expo", StaticFiles(directory=expo_assets), name="expo-assets")
+
+    @app.get("/runtime-config.js", include_in_schema=False)
+    async def runtime_config() -> Response:
+        config = {
+            "supabaseUrl": settings.supabase_url or "",
+            "supabasePublishableKey": settings.supabase_publishable_key or "",
+        }
+        script = f"globalThis.__AI_INTERVIEWER_CONFIG__={json.dumps(config, ensure_ascii=False)};"
+        return Response(
+            content=script,
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/{web_path:path}", include_in_schema=False)
     async def serve_web(web_path: str) -> FileResponse:
