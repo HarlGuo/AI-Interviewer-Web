@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomNav, Button, Card, Screen } from '@/components/ui';
 import { TrainingFocus } from '@/domain/models';
 import { showMessage } from '@/services/dialogs';
+import { track } from '@/services/telemetry';
 import { useApp } from '@/state/app-context';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -18,6 +19,7 @@ export default function InterviewHubScreen() {
   const { state } = useApp();
   const resumeReady = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
   const openSetup = (focus: TrainingFocus | null) => {
+    track('interview_mode_selected', { mode: focus ? 'focused' : 'formal', focus, resume_ready: resumeReady });
     if (!resumeReady) return router.push({ pathname: '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
     router.push({ pathname: '/setup', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };

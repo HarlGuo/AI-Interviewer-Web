@@ -1,6 +1,6 @@
 # AI 面试官
 
-一个面向毕业生和初入职场用户的 AI 模拟面试 Web MVP。项目包含 Expo Web 客户端与 FastAPI 后端，可根据用户确认的 PDF 简历和目标岗位生成个性化问题、有限动态追问与证据型面试报告。
+一个面向毕业生和初入职场用户的 AI 模拟面试 App。项目包含 Expo/React Native 客户端与本地 FastAPI 后端，可根据用户确认的 PDF 简历和目标岗位生成个性化问题、有限动态追问与证据型面试报告。
 
 > 当前为开发测试版本，不提供官方托管的大模型 API 或生产服务。仓库已经包含邮箱密码登录、人工审核、每日面试限额、用户隔离数据库和私有简历存储的基础框架，但需要开发者创建自己的 Supabase 项目才能启用；简历、面试与报告的云端同步仍在实施中。每位开发者需要使用自己的 DeepSeek API Key。请勿提交真实 Key、私人简历或面试数据。
 
@@ -27,11 +27,10 @@
 ## 目录结构
 
 ```text
-AI-Interviewer-Web/
+AI面试官/
 ├── src/                    # 移动端页面、组件、状态和 API gateway
 ├── backend/                # FastAPI、LangGraph Agent、Skills、LLM 与测试
 ├── .agents/skills/         # 简历解析与动态面试工作流
-├── docs/                   # 架构、范围、埋点与产品说明
 ├── supabase/migrations/    # 数据表、RLS 与私有文件策略
 ├── assets/                 # App 图标和静态资源
 ├── app.json                # Expo 与原生权限配置
@@ -48,10 +47,10 @@ AI-Interviewer-Web/
 
 注册 [Render](https://render.com/) 后选择 **New → Blueprint**，连接本 GitHub 仓库。创建时只在 Render 页面填写以下变量，绝不要提交到 GitHub：
 
-- 后端：`DEEPSEEK_API_KEY`、`SUPABASE_PUBLISHABLE_KEY`
+- 后端：`DEEPSEEK_API_KEY`、`SUPABASE_PUBLISHABLE_KEY`、`SUPABASE_SECRET_KEY`
 - Web：`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-免费后端闲置 15 分钟后会休眠，首次唤醒可能约需一分钟，因此只适合 MVP 内测。账号、审核状态和每日限额保存在 Supabase；当前简历、面试与报告仍按用户 ID 保存在各自浏览器本地，清除浏览器数据或更换设备后不可恢复。Render 临时磁盘不用于保存用户数据。
+账号、审核状态、每日限额、简历、面试回答、报告、产品事件和模型用量保存在 Supabase。客户端仅保留当前操作状态；后端使用 Secret Key 写入账号隔离的云端记录。
 
 ### 审核测试用户
 
@@ -86,7 +85,7 @@ AI-Interviewer-Web/
 
 以后再次运行时不必重复安装，只需要启动后端和前端。
 
-> 默认 `AUTH_MODE=development`，因此原有本地单人测试不要求注册账号。要测试邮箱注册和用户隔离，请先阅读 [账号与云端数据配置](docs/ACCOUNT_AND_CLOUD_ARCHITECTURE.md)，并按本文“启用邮箱登录”配置自己的 Supabase 项目。
+> 默认 `AUTH_MODE=development`，因此原有本地单人测试不要求注册账号。要测试邮箱注册和用户隔离，请按本文“启用邮箱登录”配置自己的 Supabase 项目。
 
 ## 启用邮箱登录（可选，云端开发阶段）
 
@@ -95,7 +94,7 @@ AI-Interviewer-Web/
 1. 登录 [Supabase](https://supabase.com/) 并新建项目。
 2. 打开项目的 SQL Editor。
 3. 完整复制并运行 `supabase/migrations/202609070001_initial_account_cloud.sql`。
-4. 再依次运行 `supabase/migrations/202609110001_manual_approval_daily_limit.sql` 和 `supabase/migrations/202609110002_approved_user_rls.sql`。
+4. 再按文件名顺序运行 `supabase/migrations/` 中其余迁移，包括 `202609140001_product_analytics.sql`。
 5. 在 **Authentication → Sign In / Providers → Email** 中启用邮箱密码登录。内测阶段可关闭 **Confirm email**，注册后由管理员在 `profiles` 表人工审核；正式公开前应配置 SMTP、重新开启邮箱确认并增加 CAPTCHA。
 
 迁移会创建用户、简历、岗位、面试、问题、回答、报告、用量、删除请求和审计结构，并创建非公开的 `resumes` 文件桶。
@@ -119,8 +118,12 @@ publishable key允许放入客户端，但它不等于管理员密钥；安全�
 ```dotenv
 AUTH_MODE=supabase
 SUPABASE_URL=https://你的项目编号.supabase.co
+SUPABASE_PUBLISHABLE_KEY=你的publishable-key
+SUPABASE_SECRET_KEY=你的后端secret-key
 SUPABASE_JWT_AUDIENCE=authenticated
 ```
+
+`SUPABASE_SECRET_KEY` 只允许出现在 `backend/.env` 或云后端环境变量中，用于保存面试记录、埋点和 Token 用量。绝不能以 `EXPO_PUBLIC_` 开头，也不能提交到 GitHub。
 
 修改环境变量后必须重新启动后端和 Expo。健康检查中的 `auth_mode` 应为 `supabase`，`supabase_configured` 应为 `true`。
 
@@ -140,12 +143,12 @@ SUPABASE_JWT_AUDIENCE=authenticated
 在 VS Code 中打开终端，然后逐行执行：
 
 ```bash
-git clone https://github.com/HarlGuo/AI-Interviewer-Web.git
-cd AI-Interviewer-Web
+git clone https://github.com/HarlGuo/AI_Interviewer.git
+cd AI_Interviewer
 npm install
 ```
 
-如果已经下载过项目，不要再次 `git clone`，直接在 VS Code 中打开 `AI-Interviewer-Web` 文件夹。终端执行下面的命令时，应能看到 `backend`、`src` 和 `package.json`：
+如果已经下载过项目，不要再次 `git clone`，直接在 VS Code 中打开 `AI_Interviewer` 文件夹。终端执行下面的命令时，应能看到 `backend`、`src` 和 `package.json`：
 
 ```bash
 pwd
@@ -173,7 +176,7 @@ ALLOWED_ORIGINS=http://localhost:8081,http://localhost:19006
 
 API Key 只能写在 `backend/.env`。不要写入 `app.json`、`.env.local`、`src/`、截图、Issue 或 Git 提交。`backend/.env` 已在 `.gitignore` 中排除。
 
-当前后端按 DeepSeek Chat Completions 接口实现。模型 HTTP 调用统一位于 `backend/app/llm/deepseek.py`；面试流程位于 `backend/app/agents/interview_graph.py`；可复用能力位于 `backend/app/skills/`。更换模型供应商时应新增 LLM 适配器，而不是修改 Agent 流程。完整说明见 [LangGraph Agent 架构](docs/LANGGRAPH_ARCHITECTURE.md)。
+当前后端按 DeepSeek Chat Completions 接口实现。模型 HTTP 调用统一位于 `backend/app/llm/deepseek.py`；面试流程位于 `backend/app/agents/interview_graph.py`；可复用能力位于 `backend/app/skills/`。更换模型供应商时应新增 LLM 适配器，而不是修改 Agent 流程。
 
 ## 3. 首次安装本地后端
 
@@ -201,7 +204,7 @@ which python
 python --version
 ```
 
-`which python` 返回的路径应包含 `AI-Interviewer-Web/backend/.venv/`。
+`which python` 返回的路径应包含 `AI_Interviewer/backend/.venv/`。
 
 ### 如果提示 activate 不存在
 
@@ -514,7 +517,7 @@ AI 复核不能保证简历绝对零错误，也不验证简历陈述真实性�
 ### 第一次配置
 
 1. 在华为云创建一个专门用于自动部署的 IAM 用户，不要使用主账号永久访问密钥。
-2. 给该用户授予更新目标函数代码所需的最小权限 `FunctionGraph:function:updateCode`，然后创建一组 AK/SK。
+2. 给该用户授予更新目标函数代码所需的最小权限 `functiongraph:function:updateFunctionCode`，然后创建一组 AK/SK。
 3. 打开 GitHub 仓库的 `Settings` → `Secrets and variables` → `Actions`。
 4. 在 `Secrets` 中添加：
    - `HUAWEICLOUD_ACCESS_KEY_ID`：IAM 用户的 AK。
@@ -574,11 +577,6 @@ PRIVATE_RESUME_PATH="../local-data/private-resume.pdf" .venv/bin/python -m unitt
 
 ## 更多文档
 
-- [技术架构](docs/ARCHITECTURE.md)
-- [P0 范围与实现状态](docs/P0_SCOPE.md)
-- [数据埋点说明](docs/ANALYTICS.md)
-- [语音识别说明](docs/SPEECH_RECOGNITION.md)
-- [需要提供或确认的真实材料](docs/REQUIRED_MATERIALS.md)
 - [可验证简历解析 Skill](.agents/skills/verified-resume-parsing/SKILL.md)
 - [简历驱动动态面试 Skill](.agents/skills/conduct-resume-interviews/SKILL.md)
 

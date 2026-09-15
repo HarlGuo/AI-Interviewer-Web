@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, Screen } from '@/components/ui';
+import { flushTelemetry, getAcquisitionProperties, track } from '@/services/telemetry';
 import { useAuth } from '@/state/auth-context';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -13,15 +14,21 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [analyticsAgreed, setAnalyticsAgreed] = useState(false);
   const submit = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError('请输入有效的邮箱地址。');
     if (password.length < 8) return setError('密码至少需要 8 个字符。');
+    if (!analyticsAgreed) return setError('请先同意内测数据说明。');
     setBusy(true); setError(''); setMessage('');
+    const acquisition = getAcquisitionProperties();
+    track(mode === 'register' ? 'registration_submitted' : 'landing_viewed', acquisition);
     try {
       await (mode === 'register' ? register(email, password) : signIn(email, password));
+      track(mode === 'register' ? 'registration_created' : 'sign_in_succeeded', acquisition);
+      await flushTelemetry();
       if (mode === 'register') setMessage('注册成功，请等待管理员确认。');
     }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '操作失败，请稍后重试。'); }
+    catch (cause) { track(mode === 'register' ? 'registration_failed' : 'sign_in_failed', { ...acquisition, error_code: 'auth_failed' }); setError(cause instanceof Error ? cause.message : '操作失败，请稍后重试。'); }
     finally { setBusy(false); }
   };
   return <Screen>
@@ -31,6 +38,7 @@ export default function LoginScreen() {
       <TextInput accessibilityLabel="邮箱" autoCapitalize="none" autoComplete="email" keyboardType="email-address" onChangeText={setEmail} placeholder="name@example.com" style={styles.input} value={email} />
       <Text style={styles.label}>密码</Text>
       <TextInput accessibilityLabel="密码" autoCapitalize="none" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} onChangeText={setPassword} placeholder="至少 8 个字符" secureTextEntry style={styles.input} value={password} />
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: analyticsAgreed }} onPress={() => setAnalyticsAgreed((value) => !value)} style={styles.agreement}><View style={[styles.checkbox, analyticsAgreed && styles.checkboxOn]}><Text style={styles.check}>{analyticsAgreed ? '✓' : ''}</Text></View><Text style={styles.agreementText}>我同意内测期间记录匿名产品事件、错误类型和模型 Token 用量，用于改进产品；不记录简历、问题、回答或录音正文。</Text></Pressable>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {message ? <Text style={styles.success}>{message}</Text> : null}
       {busy ? <ActivityIndicator color={colors.primary} /> : null}
@@ -45,4 +53,5 @@ const styles = StyleSheet.create({
   hero: { marginTop: spacing.xl, marginBottom: spacing.lg }, title: { ...typography.title, color: colors.ink }, subtitle: { color: colors.muted, lineHeight: 21, marginTop: 8 },
   label: { color: colors.ink, fontWeight: '700', marginBottom: 7 }, input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 14, minHeight: 50, color: colors.ink, backgroundColor: colors.surface, marginBottom: spacing.md },
   error: { color: colors.danger, lineHeight: 20, marginBottom: spacing.sm }, success: { color: colors.success, lineHeight: 20, marginBottom: spacing.sm, fontWeight: '700' }, notice: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  agreement: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: spacing.md }, checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary }, check: { color: '#fff', fontWeight: '900' }, agreementText: { flex: 1, color: colors.muted, fontSize: 12, lineHeight: 18 },
 });

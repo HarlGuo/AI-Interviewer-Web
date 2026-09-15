@@ -21,7 +21,7 @@ export default function HomeScreen() {
   const ready = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
 
   const start = (focus: TrainingFocus | null = null) => {
-    track('interview_entry_clicked', { mode: focus ? 'focused' : 'formal', resume_ready: ready });
+    track('interview_mode_selected', { mode: focus ? 'focused' : 'formal', focus, resume_ready: ready });
     router.push({ pathname: ready ? '/setup' : '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };
 

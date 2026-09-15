@@ -14,9 +14,14 @@ cp .env.example .env
 
 ```dotenv
 DEEPSEEK_API_KEY=你的新Key
+AUTH_MODE=supabase
+SUPABASE_URL=https://你的项目编号.supabase.co
+SUPABASE_PUBLISHABLE_KEY=你的publishable-key
+SUPABASE_SECRET_KEY=你的后端secret-key
 ```
 
 `backend/.env` 已被 Git 忽略。不要使用已经出现在聊天、截图、日志或 Git 历史中的 Key。
+`SUPABASE_SECRET_KEY` 也只能保存在后端，用于持久化面试、报告、埋点和 DeepSeek Token 用量，不能写进任何 `EXPO_PUBLIC_*` 变量。
 
 启动：
 

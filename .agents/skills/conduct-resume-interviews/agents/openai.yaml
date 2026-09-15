@@ -1,4 +1,0 @@
-interface:
-  display_name: "简历驱动动态面试"
-  short_description: "基于已确认简历和岗位生成个性化问题并执行受控的动态追问流程"
-  default_prompt: "使用 $conduct-resume-interviews 基于已确认简历进行动态模拟面试。"

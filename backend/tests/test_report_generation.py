@@ -24,7 +24,7 @@ class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
                 {"question_id": "q1", "strengths": ["亮点"], "issues": [], "evidence": ["不存在的证据"], "suggestion": "补充细节"}
             ],
         }
-        request = ReportRequest(target_role="产品经理", mode="focused", completed=True, answers=[AnswerEvidence(question_id="q1", question="问题", answer="不知道")])
+        request = ReportRequest(interview_id="00000000-0000-4000-8000-000000000001", target_role="产品经理", mode="focused", completed=True, answers=[AnswerEvidence(question_id="q1", question="问题", answer="不知道")])
         report = await generate_report(request)
         self.assertEqual(report.overall_score, 0)
         self.assertTrue(all(item.score is None and not item.evidence for item in report.dimensions))
@@ -49,7 +49,7 @@ class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
         answer = "我先访谈用户，再根据反馈调整了功能优先级。"
-        request = ReportRequest(target_role="产品经理", mode="focused", completed=True, answers=[AnswerEvidence(question_id="q1", question="问题", answer=answer)])
+        request = ReportRequest(interview_id="00000000-0000-4000-8000-000000000001", target_role="产品经理", mode="focused", completed=True, answers=[AnswerEvidence(question_id="q1", question="问题", answer=answer)])
         report = await generate_report(request)
         self.assertEqual(report.overall_score, 60)
         self.assertTrue(all(item.score == 60 and item.evidence == [answer] for item in report.dimensions))

@@ -92,9 +92,9 @@ START_GRAPH = _compile_start_graph()
 TURN_GRAPH = _compile_turn_graph()
 
 
-async def start_interview(request: InterviewAgentStartRequest) -> InterviewStartResponse:
+async def start_interview(request: InterviewAgentStartRequest, *, interview_id: str | None = None) -> InterviewStartResponse:
     state = await START_GRAPH.ainvoke({"request": request})
-    return InterviewStartResponse(interview_id=str(uuid4()), question=state["question"], total_main_questions=len(state["plan"]))
+    return InterviewStartResponse(interview_id=interview_id or str(uuid4()), question=state["question"], total_main_questions=len(state["plan"]))
 
 
 async def advance_interview(request: InterviewTurnRequest) -> InterviewTurnResponse:

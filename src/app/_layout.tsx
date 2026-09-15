@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { AppProvider } from '@/state/app-context';
 import { AuthProvider, useAuth } from '@/state/auth-context';
+import { flushTelemetry, track } from '@/services/telemetry';
 import { colors } from '@/theme/tokens';
 
 export default function RootLayout() {
@@ -19,6 +20,11 @@ export default function RootLayout() {
 function ProtectedStack() {
   const { ready, cloudEnabled, user, accountStatus, statusLoading } = useAuth();
   const segments = useSegments();
+  useEffect(() => {
+    if (!ready || !cloudEnabled || !user) return;
+    track('authenticated_session_started');
+    void flushTelemetry();
+  }, [cloudEnabled, ready, user?.id]);
   useEffect(() => {
     if (!ready || !cloudEnabled) return;
     const onLogin = (segments[0] as string | undefined) === 'login';

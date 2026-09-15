@@ -27,7 +27,7 @@ export default function ResumeScreen() {
     if (typeof asset.size === 'number' && asset.size > MAX_BYTES) return setError('文件超过 10 MB，请压缩后重新上传。');
     try {
       await saveResume({ id: `${Date.now()}`, name: asset.name, uri: asset.uri, size: asset.size ?? null, status: 'uploaded', uploadedAt: new Date().toISOString(), sections: [], warnings: [], reviewStatus: 'pending' });
-      track('resume_upload_succeeded', { size_bytes: asset.size ?? 0 });
+      const size = asset.size ?? 0; track('resume_upload_succeeded', { size_bucket: size < 1024 * 1024 ? '<1MB' : size < 5 * 1024 * 1024 ? '1-5MB' : '5-10MB', replace_existing: Boolean(state.resume) });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '简历上传失败，请稍后重试。');
       track('resume_upload_failed');
@@ -35,15 +35,16 @@ export default function ResumeScreen() {
   };
 
   const parse = async () => {
-    if (!state.resume || busy) return; setBusy(true); setError('');
+    if (!state.resume || busy) return; setBusy(true); setError(''); const startedAt = Date.now(); track('resume_parse_started');
     await saveResume({ ...state.resume, status: 'parsing' });
     try {
       const parsed = await resumeGateway.parse(state.resume);
       await saveResume({ ...state.resume, status: 'reviewed', sections: parsed.sections, warnings: [...parsed.warnings, ...parsed.review_issues], reviewStatus: parsed.review_status === 'ai_verified' ? 'ai_verified' : 'pending' });
+      track('resume_parse_succeeded', { duration_ms: Date.now() - startedAt, warning_count: parsed.warnings.length + parsed.review_issues.length });
       setExpanded(parsed.sections.slice(0, 1).map((item) => item.title));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '请稍后重试。';
-      track('resume_parse_failed', { reason: cause instanceof ApiNotConfiguredError ? 'not_configured' : 'request_failed' });
+      track('resume_parse_failed', { error_code: cause instanceof ApiNotConfiguredError ? 'not_configured' : 'request_failed', duration_ms: Date.now() - startedAt });
       await saveResume({ ...state.resume, status: 'failed' }); setError(message);
     } finally { setBusy(false); }
   };
@@ -51,6 +52,7 @@ export default function ResumeScreen() {
   const confirm = async () => {
     if (!state.resume || state.resume.reviewStatus !== 'ai_verified') return showMessage('尚不能确认', 'AI 复核和完整性校验通过后才能确认。');
     await saveResume({ ...state.resume, status: 'confirmed' });
+    track('resume_confirmed', { warning_count: state.resume.warnings.length });
   };
   const goSetup = () => router.push({ pathname: '/setup', params: { mode: params.mode ?? 'formal', ...(params.focus ? { focus: params.focus } : {}) } });
   const toggle = (title: string) => setExpanded((items) => items.includes(title) ? items.filter((item) => item !== title) : [...items, title]);

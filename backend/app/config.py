@@ -29,11 +29,21 @@ class Settings:
     auth_mode: str = os.getenv("AUTH_MODE", "development").strip().lower()
     supabase_url: str | None = os.getenv("SUPABASE_URL", "").rstrip("/") or None
     supabase_publishable_key: str | None = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip() or None
+    supabase_secret_key: str | None = (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip() or None
     supabase_jwt_audience: str = os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+    app_version: str = os.getenv("APP_VERSION", "development").strip() or "development"
+    agent_version: str = os.getenv("AGENT_VERSION", "interview-graph-v1").strip() or "interview-graph-v1"
+    prompt_version: str = os.getenv("PROMPT_VERSION", "interview-prompts-v1").strip() or "interview-prompts-v1"
+    skill_version: str = os.getenv("SKILL_VERSION", "resume-interview-skills-v1").strip() or "resume-interview-skills-v1"
+    rubric_version: str = os.getenv("RUBRIC_VERSION", "behavior-anchor-v1").strip() or "behavior-anchor-v1"
 
     @property
     def supabase_auth_enabled(self) -> bool:
         return self.auth_mode == "supabase" and bool(self.supabase_url and self.supabase_publishable_key)
+
+    @property
+    def analytics_enabled(self) -> bool:
+        return bool(self.supabase_url and self.supabase_secret_key)
 
 
 settings = Settings()

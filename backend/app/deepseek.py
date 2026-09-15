@@ -47,7 +47,7 @@ async def generate_report(request: ReportRequest) -> InterviewReport:
     content = await chat_json(
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": "请根据以下真实面试数据生成 JSON 报告：\n" + request.model_dump_json()},
+            {"role": "user", "content": "请根据以下真实面试数据生成 JSON 报告：\n" + request.model_dump_json(exclude={"interview_id"})},
         ],
         temperature=0.1,
         max_tokens=5000,
