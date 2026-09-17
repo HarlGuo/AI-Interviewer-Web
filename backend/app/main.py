@@ -37,7 +37,8 @@ app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
 
 @app.get("/health")
 async def health() -> dict[str, str | bool]:
-    return {"status": "ok", "deepseek_configured": bool(settings.deepseek_api_key), "model": settings.deepseek_model, "auth_mode": settings.auth_mode, "supabase_configured": settings.supabase_auth_enabled, "analytics_configured": settings.analytics_enabled, "app_version": settings.app_version, "agent_version": settings.agent_version}
+    skill_versions = ",".join(f"{item.name}:{item.version}" for item in interviewer_agent.registry.catalog())
+    return {"status": "ok", "deepseek_configured": bool(settings.deepseek_api_key), "model": settings.deepseek_model, "auth_mode": settings.auth_mode, "supabase_configured": settings.supabase_auth_enabled, "analytics_configured": settings.analytics_enabled, "app_version": settings.app_version, "agent_version": settings.agent_version, "agent_definition_version": interviewer_agent.descriptor.version, "runtime_skill_versions": skill_versions}
 
 
 @app.post("/v1/resumes/parse", response_model=ResumeParseResponse)
