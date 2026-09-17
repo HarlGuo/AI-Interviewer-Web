@@ -63,11 +63,13 @@ class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(interviewer_agent.policy.stage_plan("focused", "behavioral"), ["behavioral"] * 3)
 
     @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    async def test_start_uses_resume_agent_question(self, generate: AsyncMock) -> None:
-        generate.return_value = {"question": "请结合 CoachCraft 经历做自我介绍。", "resume_evidence": "CoachCraft 产品规划"}
+    async def test_formal_start_uses_stable_skill_template_without_llm(self, generate: AsyncMock) -> None:
         result = await start_interview(start_request())
         self.assertEqual(result.source, "resume_driven_agent")
         self.assertEqual(result.total_main_questions, 5)
+        self.assertIn("产品经理", result.question.text)
+        self.assertIn("自我介绍", result.question.text)
+        generate.assert_not_awaited()
 
     @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
     async def test_resume_deep_dive_question_creates_project_context(self, generate: AsyncMock) -> None:

@@ -33,6 +33,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
     const detail = Array.isArray(body.detail)
       ? body.detail.map((item: { msg?: string }) => item.msg ?? '请求格式错误').join('；')
       : body.detail;
+    if (response.status === 503 && typeof detail !== 'string') {
+      throw new Error('云服务本次请求未能及时完成。请稍等片刻后重试；你的简历和已填写内容不会丢失。');
+    }
     throw new Error(typeof detail === 'string' ? detail : `HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;

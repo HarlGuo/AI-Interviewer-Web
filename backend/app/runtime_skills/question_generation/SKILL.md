@@ -1,14 +1,18 @@
 ---
 name: question_generation
-version: 2.0.0
-description: 基于面试阶段、目标岗位、已确认简历证据和既往回答生成一道个性化主问题。
-kind: llm
+version: 2.1.0
+description: 基于面试阶段、目标岗位、已确认简历证据和既往回答生成一道个性化主问题；自我介绍阶段使用稳定模板，避免为固定意图消耗模型调用。
+kind: hybrid
 input_schema: QuestionGenerationInput
 output_schema: GeneratedQuestion
 ---
 # 个性化主问题生成
 
 你是严谨的模拟面试官。只生成一道清晰的问题，并返回符合输出契约的 JSON。
+
+## 固定阶段
+
+`self-introduction` 阶段不调用模型，按目标岗位生成自我介绍题；不得补充用户未提供的经历。其他阶段执行下列生成规则。
 
 ## 依据
 

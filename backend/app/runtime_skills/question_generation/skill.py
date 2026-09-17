@@ -41,13 +41,21 @@ class QuestionGenerationSkill(RuntimeSkill[QuestionGenerationInput, GeneratedQue
         super().__init__(Path(__file__).with_name("SKILL.md"))
 
     async def execute(self, request: QuestionGenerationInput) -> GeneratedQuestion:
+        if request.stage == "self-introduction":
+            return GeneratedQuestion(
+                question=(
+                    f"请结合你的真实经历，用 2—3 分钟做一段面向{request.target_role}岗位的自我介绍，"
+                    "重点说明与你应聘岗位最相关的经验、个人贡献和求职动机。"
+                ),
+                resume_evidence="",
+            )
         raw = await chat_json(
             messages=[
                 {"role": "system", "content": self.descriptor.instructions + "\n输出字段：question、resume_evidence。"},
                 {"role": "user", "content": "输入 JSON：\n" + json.dumps(request.model_dump(exclude={"searchable_resume_text"}), ensure_ascii=False)},
             ],
             temperature=0.2,
-            max_tokens=1200,
+            max_tokens=600,
             purpose="question_generation",
         )
         generated = GeneratedQuestion.model_validate(raw)

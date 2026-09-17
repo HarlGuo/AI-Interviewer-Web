@@ -26,37 +26,49 @@ PURPOSE_OPERATIONS = {
     "report_generation": "report_generation",
 }
 
+# CloudBase Run has a hard 60-second request limit. A turn can invoke answer
+# analysis and question generation sequentially, so each interactive model call
+# must leave enough time for the second skill and for the API to return a
+# structured error instead of an opaque gateway 503.
+PURPOSE_READ_TIMEOUTS = {
+    "question_generation": 22,
+    "answer_evaluation": 22,
+    "answer_analysis": 22,
+    "resume_project_followup": 22,
+    "resume review": 45,
+    "resume_review": 45,
+    "report": 50,
+    "report_generation": 50,
+}
+
 
 async def chat_json(*, messages: list[dict[str, str]], temperature: float, max_tokens: int, purpose: str) -> dict[str, Any]:
     """DeepSeek JSON adapter. No agent or business decisions belong in this layer."""
     if not settings.deepseek_api_key:
         raise LLMNotConfiguredError("DEEPSEEK_API_KEY is not configured")
-    last_error = "empty content"
-    for attempt in range(2):
-        payload = {
-            "model": settings.deepseek_model,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-            "thinking": {"type": "disabled"},
-            "stream": False,
-            "temperature": temperature,
-            "max_tokens": max_tokens * (attempt + 1),
-        }
-        response_data = await _send(
-            payload,
-            read_timeout=180 if purpose in {"report", "report_generation"} else 75,
-            purpose=purpose,
-            attempt_no=attempt + 1,
-        )
-        try:
-            content = response_data["choices"][0]["message"]["content"]
-            parsed = json.loads(content) if content else None
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError):
-            parsed = None
-            last_error = "invalid or malformed JSON"
-        if isinstance(parsed, dict):
-            return parsed
-    raise RuntimeError(f"DeepSeek {purpose} failed after one retry: {last_error}")
+    payload = {
+        "model": settings.deepseek_model,
+        "messages": messages,
+        "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
+        "stream": False,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    response_data = await _send(
+        payload,
+        read_timeout=PURPOSE_READ_TIMEOUTS.get(purpose, 22),
+        purpose=purpose,
+        attempt_no=1,
+    )
+    try:
+        content = response_data["choices"][0]["message"]["content"]
+        parsed = json.loads(content) if content else None
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    raise RuntimeError(f"DeepSeek {purpose} returned invalid or malformed JSON")
 
 
 async def _send(

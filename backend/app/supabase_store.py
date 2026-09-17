@@ -42,11 +42,12 @@ async def _request(
     payload: dict[str, Any] | list[dict[str, Any]] | None = None,
     params: dict[str, str] | None = None,
     prefer: str = "return=minimal",
+    timeout_seconds: float = 12,
 ) -> bool:
     if not settings.analytics_enabled:
         return False
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.request(
                 method,
                 f"{settings.supabase_url}/rest/v1/{table}",
@@ -288,7 +289,7 @@ async def record_ai_usage(
 ) -> bool:
     if not user_id or user_id == "00000000-0000-0000-0000-000000000000":
         return False
-    return await _request("POST", "ai_usage_events", payload={
+    return await _request("POST", "ai_usage_events", timeout_seconds=3, payload={
         "event_id": str(uuid4()),
         "user_id": user_id,
         "interview_id": interview_id,

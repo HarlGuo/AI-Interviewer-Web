@@ -11,7 +11,7 @@ class SkillDescriptor(BaseModel):
     name: str = Field(pattern=r"^[a-z][a-z0-9_-]+$")
     version: str
     description: str
-    kind: Literal["llm", "deterministic"]
+    kind: Literal["llm", "deterministic", "hybrid"]
     input_schema: str
     output_schema: str
     instructions: str
