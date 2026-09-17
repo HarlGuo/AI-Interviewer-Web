@@ -11,6 +11,7 @@ from ...schemas import (
     InterviewStartResponse,
     InterviewTurnRequest,
     InterviewTurnResponse,
+    ProjectInterviewContext,
     ReportRequest,
 )
 
@@ -38,6 +39,7 @@ class TurnState(TypedDict, total=False):
     latest_answer: str
     resume_context: ResumeContextOutput
     decision: AnswerDecision
+    project_context: ProjectInterviewContext
     next_main_index: int
     response: InterviewTurnResponse
     skill_trace: list[SkillTrace]

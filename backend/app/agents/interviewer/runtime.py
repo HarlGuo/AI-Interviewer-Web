@@ -5,6 +5,7 @@ from ...runtime_skills.answer_evaluation import AnswerEvaluationSkill
 from ...runtime_skills.question_generation import QuestionGenerationSkill
 from ...runtime_skills.report_generation import ReportGenerationSkill
 from ...runtime_skills.resume_context import ResumeContextSkill
+from ...runtime_skills.resume_project_followup import ResumeProjectFollowUpSkill
 from .agent import InterviewerAgent
 
 
@@ -13,6 +14,7 @@ def build_skill_registry() -> SkillRegistry:
     registry.register(ResumeContextSkill())
     registry.register(QuestionGenerationSkill())
     registry.register(AnswerEvaluationSkill())
+    registry.register(ResumeProjectFollowUpSkill())
     registry.register(ReportGenerationSkill())
     return registry
 

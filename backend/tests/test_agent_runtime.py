@@ -37,6 +37,7 @@ configuration:
     resume_context: resume_context
     question_generation: missing_skill
     answer_evaluation: missing_skill
+    resume_project_followup: missing_skill
     report_generation: missing_skill
 ---
 # test agent

@@ -11,6 +11,7 @@ from ...schemas import InterviewTurnRequest
 
 
 UNKNOWN_ANSWER = re.compile(r"^(不知道|不清楚|不会|不了解|没有(?:相关)?经历|暂时没有|想不起来)[。.!！\s]*$")
+NOT_RESPONSIBLE = re.compile(r"(不是我负责|不归我负责|我没有负责|我未参与|不是我做的|由其他人负责)")
 
 
 class StageDefinition(BaseModel):
@@ -29,7 +30,7 @@ class InterviewerConfiguration(BaseModel):
         keys = [stage.key for stage in self.formal_stages]
         if len(keys) != len(set(keys)):
             raise ValueError("Agent 阶段 key 不能重复")
-        required = {"resume_context", "question_generation", "answer_evaluation", "report_generation"}
+        required = {"resume_context", "question_generation", "answer_evaluation", "resume_project_followup", "report_generation"}
         if set(self.skill_bindings) != required:
             raise ValueError("Agent skill_bindings 不完整")
         return self
@@ -85,6 +86,25 @@ class InterviewerPolicy:
                 action="next_main",
                 reason="用户明确表示不知道或没有相关经历",
                 weakness="当前问题缺少可用回答证据",
+            )
+        return None
+
+    def project_stop_decision(self, request: InterviewTurnRequest, latest_answer: str) -> AnswerDecision | None:
+        current = request.current_question
+        context = current.project_context
+        if context is None:
+            return None
+        if current.follow_up_count >= self.max_follow_ups or context.round_count >= 3:
+            return AnswerDecision(
+                action="next_main",
+                reason="当前项目已达到最多 2 次追问、3 轮深挖的限制，切换主题。",
+                weakness="当前项目已达深挖上限",
+            )
+        if NOT_RESPONSIBLE.search(latest_answer):
+            return AnswerDecision(
+                action="next_main",
+                reason="候选人明确说明相关内容不是本人负责，切换主题。",
+                weakness="当前项目的个人贡献无法继续核对",
             )
         return None
 

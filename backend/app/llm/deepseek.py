@@ -21,6 +21,7 @@ PURPOSE_OPERATIONS = {
     "question_generation": "question_generation",
     "answer_evaluation": "answer_analysis",
     "answer_analysis": "answer_analysis",
+    "resume_project_followup": "answer_analysis",
     "report": "report_generation",
     "report_generation": "report_generation",
 }
@@ -43,7 +44,7 @@ async def chat_json(*, messages: list[dict[str, str]], temperature: float, max_t
         }
         response_data = await _send(
             payload,
-            read_timeout=180 if purpose == "report" else 75,
+            read_timeout=180 if purpose in {"report", "report_generation"} else 75,
             purpose=purpose,
             attempt_no=attempt + 1,
         )

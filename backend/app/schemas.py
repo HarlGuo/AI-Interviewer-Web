@@ -28,6 +28,28 @@ class InterviewConfig(BaseModel):
     focus: Literal["self-introduction", "resume-deep-dive", "behavioral", "role-specific"] | None = None
 
 
+ProjectTarget = Literal["background", "personal_responsibility", "technical_solution", "problem_solving", "result"]
+CoverageStatus = Literal["covered", "uncovered", "uncertain"]
+
+
+class ProjectCoverage(BaseModel):
+    background: CoverageStatus = "uncovered"
+    personal_responsibility: CoverageStatus = "uncovered"
+    technical_solution: CoverageStatus = "uncovered"
+    problem_solving: CoverageStatus = "uncovered"
+    result: CoverageStatus = "uncovered"
+
+
+class ProjectInterviewContext(BaseModel):
+    project_key: str = Field(min_length=8, max_length=64)
+    project_resume_evidence: str = Field(min_length=1, max_length=1000)
+    coverage: ProjectCoverage = Field(default_factory=ProjectCoverage)
+    round_count: int = Field(default=1, ge=1, le=3)
+    consecutive_insufficient_count: int = Field(default=0, ge=0, le=2)
+    question_ids: list[str] = Field(default_factory=list, max_length=3)
+    visited_project_evidence: list[str] = Field(default_factory=list, max_length=10)
+
+
 class InterviewQuestion(BaseModel):
     id: str
     stage: str
@@ -36,6 +58,7 @@ class InterviewQuestion(BaseModel):
     main_question_index: int = Field(ge=0)
     follow_up_count: int = Field(ge=0, le=2)
     resume_evidence: str = ""
+    project_context: ProjectInterviewContext | None = None
 
 
 class InterviewStartResponse(BaseModel):

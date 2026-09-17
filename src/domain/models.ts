@@ -5,7 +5,33 @@ export type TargetRole = { title: string; jd: string; savedAt: string };
 export type InterviewMode = 'formal' | 'focused';
 export type TrainingFocus = 'self-introduction' | 'resume-deep-dive' | 'behavioral' | 'role-specific';
 export type SessionStatus = 'draft' | 'active' | 'paused' | 'completed' | 'ended-early';
-export type InterviewQuestion = { id: string; stage: string; text: string; is_follow_up: boolean; main_question_index: number; follow_up_count: number; resume_evidence: string };
+export type ProjectCoverageStatus = 'covered' | 'uncovered' | 'uncertain';
+export type ProjectCoverage = {
+  background: ProjectCoverageStatus;
+  personal_responsibility: ProjectCoverageStatus;
+  technical_solution: ProjectCoverageStatus;
+  problem_solving: ProjectCoverageStatus;
+  result: ProjectCoverageStatus;
+};
+export type ProjectInterviewContext = {
+  project_key: string;
+  project_resume_evidence: string;
+  coverage: ProjectCoverage;
+  round_count: number;
+  consecutive_insufficient_count: number;
+  question_ids: string[];
+  visited_project_evidence: string[];
+};
+export type InterviewQuestion = {
+  id: string;
+  stage: string;
+  text: string;
+  is_follow_up: boolean;
+  main_question_index: number;
+  follow_up_count: number;
+  resume_evidence: string;
+  project_context?: ProjectInterviewContext | null;
+};
 export type AnswerSource = 'text' | 'speech_transcript';
 export type SpeechDeliveryMetrics = {
   duration_ms: number; voiced_duration_ms: number; pause_count: number; average_pause_ms: number;

@@ -25,6 +25,7 @@ class QuestionGenerationInput(BaseModel):
     confirmed_resume: list[SafeResumeSection]
     previous_answers: list[PreviousAnswer] = Field(default_factory=list)
     searchable_resume_text: str = ""
+    excluded_resume_evidence: list[str] = Field(default_factory=list, max_length=10)
 
 
 class GeneratedQuestion(BaseModel):
@@ -51,7 +52,7 @@ class QuestionGenerationSkill(RuntimeSkill[QuestionGenerationInput, GeneratedQue
         )
         generated = GeneratedQuestion.model_validate(raw)
         evidence = generated.resume_evidence
-        if not evidence or evidence not in request.searchable_resume_text:
+        if not evidence or evidence not in request.searchable_resume_text or evidence in request.excluded_resume_evidence:
             evidence = ""
         return generated.model_copy(update={
             "question": clean_user_facing_text(generated.question),

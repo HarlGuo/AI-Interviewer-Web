@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -12,6 +13,7 @@ from ...runtime_skills.answer_evaluation import AnswerDecision, AnswerEvaluation
 from ...runtime_skills.question_generation import PreviousAnswer, QuestionGenerationInput
 from ...runtime_skills.report_generation import ReportGenerationInput
 from ...runtime_skills.resume_context import ResumeContextInput
+from ...runtime_skills.resume_project_followup import ResumeProjectFollowUpInput
 from ...schemas import (
     InterviewAgentStartRequest,
     InterviewQuestion,
@@ -19,6 +21,7 @@ from ...schemas import (
     InterviewStartResponse,
     InterviewTurnRequest,
     InterviewTurnResponse,
+    ProjectInterviewContext,
     ReportRequest,
 )
 from .policy import InterviewerPolicy, append_trace
@@ -87,6 +90,10 @@ class InterviewerAgent:
 
     async def _evaluate_turn(self, state: TurnState) -> dict:
         request = state["request"]
+        current = request.current_question
+        stage = state["plan"][current.main_question_index]
+        if stage == "resume-deep-dive" and current.project_context is not None:
+            return await self._evaluate_resume_project(state)
         decision = self.policy.deterministic_decision(request, state["latest_answer"])
         if decision is not None:
             return {"decision": decision}
@@ -103,6 +110,66 @@ class InterviewerAgent:
         ))
         return {"decision": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor)}
 
+    async def _evaluate_resume_project(self, state: TurnState) -> dict:
+        request = state["request"]
+        current = request.current_question
+        context = current.project_context
+        if context is None:
+            raise ValueError("简历项目追问缺少项目上下文")
+        fixed = self.policy.project_stop_decision(request, state["latest_answer"])
+        if fixed is not None:
+            return {"decision": fixed, "project_context": context}
+        question_ids = set(context.question_ids)
+        project_answers = [item for item in request.answers if item.question_id in question_ids]
+        name = self.policy.skill("resume_project_followup")
+        skill = self.registry.require(name)
+        project_decision = await skill.invoke(ResumeProjectFollowUpInput(
+            target_role=request.target_role,
+            project_key=context.project_key,
+            project_resume_evidence=context.project_resume_evidence,
+            latest_answer=state["latest_answer"],
+            project_answers=project_answers,
+            coverage=context.coverage,
+            follow_up_count=current.follow_up_count,
+            project_round_count=context.round_count,
+            consecutive_insufficient_count=context.consecutive_insufficient_count,
+        ))
+        coverage_updates = {item.target: "covered" for item in project_decision.newly_covered_targets}
+        coverage = context.coverage.model_copy(update=coverage_updates)
+        insufficient_count = (
+            min(2, context.consecutive_insufficient_count + 1)
+            if project_decision.information_quality == "insufficient"
+            else 0
+        )
+        updated_context = context.model_copy(update={
+            "coverage": coverage,
+            "consecutive_insufficient_count": insufficient_count,
+        })
+        all_covered = all(value == "covered" for value in coverage.model_dump().values())
+        must_switch = (
+            all_covered
+            or insufficient_count >= 2
+            or project_decision.information_quality == "not_responsible"
+            or project_decision.action != "follow_up"
+        )
+        decision = AnswerDecision(
+            action="next_main" if must_switch else "follow_up",
+            question="" if must_switch else project_decision.question,
+            reason=(
+                "当前项目的主要考察目标已覆盖，切换主题。"
+                if all_covered
+                else "候选人连续两次未提供有效信息，切换主题。"
+                if insufficient_count >= 2
+                else project_decision.reason
+            ),
+            weakness=project_decision.weakness,
+        )
+        return {
+            "decision": decision,
+            "project_context": updated_context,
+            "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor),
+        }
+
     def _route_decision(self, state: TurnState) -> Literal["follow_up", "advance_main"]:
         current = state["request"].current_question
         return "follow_up" if state["decision"].action == "follow_up" and current.follow_up_count < self.policy.max_follow_ups else "advance_main"
@@ -112,14 +179,22 @@ class InterviewerAgent:
         if not decision.question.strip():
             raise ValueError("追问决策缺少问题")
         current = request.current_question
+        project_context = state.get("project_context")
+        question_id = str(uuid4())
+        if project_context is not None:
+            project_context = project_context.model_copy(update={
+                "round_count": project_context.round_count + 1,
+                "question_ids": [*project_context.question_ids, question_id],
+            })
         question = InterviewQuestion(
-            id=str(uuid4()),
+            id=question_id,
             stage=self.policy.label(state["plan"][current.main_question_index]),
             text=decision.question.strip(),
             is_follow_up=True,
             main_question_index=current.main_question_index,
             follow_up_count=current.follow_up_count + 1,
             resume_evidence="",
+            project_context=project_context,
         )
         return {"response": InterviewTurnResponse(
             next_question=question,
@@ -147,6 +222,8 @@ class InterviewerAgent:
 
     async def _generate_next_question(self, state: TurnState) -> dict:
         request, index = state["request"], state["next_main_index"]
+        current_context = request.current_question.project_context
+        excluded_evidence = current_context.visited_project_evidence if current_context is not None else []
         question, trace = await self._invoke_question_skill(
             request=request,
             stage=state["plan"][index],
@@ -154,6 +231,7 @@ class InterviewerAgent:
             answers=request.answers,
             resume_context=state["resume_context"],
             trace=state.get("skill_trace"),
+            excluded_resume_evidence=excluded_evidence,
         )
         decision = state["decision"]
         return {
@@ -168,7 +246,8 @@ class InterviewerAgent:
         }
 
     async def _invoke_question_skill(self, *, request: InterviewAgentStartRequest, stage: str, index: int,
-                                     answers: list, resume_context, trace: list | None) -> tuple[InterviewQuestion, list]:
+                                     answers: list, resume_context, trace: list | None,
+                                     excluded_resume_evidence: list[str] | None = None) -> tuple[InterviewQuestion, list]:
         name = self.policy.skill("question_generation")
         skill = self.registry.require(name)
         generated = await skill.invoke(QuestionGenerationInput(
@@ -180,15 +259,27 @@ class InterviewerAgent:
             confirmed_resume=resume_context.sections,
             previous_answers=[PreviousAnswer(question=item.question[:1000], answer=item.answer[:4000]) for item in answers[-6:]],
             searchable_resume_text=resume_context.searchable_text,
+            excluded_resume_evidence=excluded_resume_evidence or [],
         ))
+        question_id = str(uuid4())
+        visited_evidence = list(dict.fromkeys([*(excluded_resume_evidence or []), generated.resume_evidence]))
+        project_context = None
+        if stage == "resume-deep-dive" and generated.resume_evidence:
+            project_context = ProjectInterviewContext(
+                project_key=sha256(generated.resume_evidence.encode("utf-8")).hexdigest()[:16],
+                project_resume_evidence=generated.resume_evidence,
+                question_ids=[question_id],
+                visited_project_evidence=visited_evidence,
+            )
         question = InterviewQuestion(
-            id=str(uuid4()),
+            id=question_id,
             stage=self.policy.label(stage),
             text=generated.question,
             is_follow_up=False,
             main_question_index=index,
             follow_up_count=0,
             resume_evidence=generated.resume_evidence,
+            project_context=project_context,
         )
         return question, append_trace(trace, descriptor=skill.descriptor)
 

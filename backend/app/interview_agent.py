@@ -1,6 +1,12 @@
-"""Compatibility exports. New code should import agents/skills directly."""
+"""Compatibility exports. New code should import the modular agent directly."""
 
 from .agents.interview_graph import advance_interview, start_interview
-from .skills.interview import AnswerDecision, generate_main_question as _generate_main_question, stage_plan
+from .agents.interviewer import interviewer_agent
+from .runtime_skills.answer_evaluation import AnswerDecision
 
-__all__ = ["AnswerDecision", "_generate_main_question", "advance_interview", "stage_plan", "start_interview"]
+
+def stage_plan(mode: str, focus: str | None) -> list[str]:
+    return interviewer_agent.policy.stage_plan(mode, focus)
+
+
+__all__ = ["AnswerDecision", "advance_interview", "stage_plan", "start_interview"]

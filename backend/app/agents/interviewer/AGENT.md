@@ -1,12 +1,13 @@
 ---
 name: resume_interviewer
-version: 2.0.0
+version: 2.1.0
 description: 基于已确认简历和目标岗位执行结构化模拟面试、有限动态追问与证据型复盘。
 framework: langgraph
 skills:
   - resume_context
   - question_generation
   - answer_evaluation
+  - resume_project_followup
   - report_generation
 configuration:
   max_follow_ups: 2
@@ -26,6 +27,7 @@ configuration:
     resume_context: resume_context
     question_generation: question_generation
     answer_evaluation: answer_evaluation
+    resume_project_followup: resume_project_followup
     report_generation: report_generation
 ---
 # 简历驱动面试 Agent
@@ -43,4 +45,5 @@ configuration:
 - 程序策略层决定阶段顺序、追问次数上限和完成条件，Skill 不得绕过。
 - 每次只输出一道问题。
 - 用户明确表示不知道或没有相关经历时，不强行追问。
+- “简历深挖”阶段且当前问题已绑定简历项目证据时，调用 `resume_project_followup`；其他阶段调用 `answer_evaluation`，不同时调用两者。
 - 报告中每项评价必须包含理由、用户回答证据和可执行建议；证据不足时明确标注。
