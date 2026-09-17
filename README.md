@@ -176,7 +176,7 @@ ALLOWED_ORIGINS=http://localhost:8081,http://localhost:19006
 
 API Key 只能写在 `backend/.env`。不要写入 `app.json`、`.env.local`、`src/`、截图、Issue 或 Git 提交。`backend/.env` 已在 `.gitignore` 中排除。
 
-当前后端按 DeepSeek Chat Completions 接口实现。模型 HTTP 调用统一位于 `backend/app/llm/deepseek.py`；面试流程位于 `backend/app/agents/interview_graph.py`；可复用能力位于 `backend/app/skills/`。更换模型供应商时应新增 LLM 适配器，而不是修改 Agent 流程。
+当前后端按 DeepSeek Chat Completions 接口实现。模型 HTTP 调用统一位于 `backend/app/llm/deepseek.py`；Agent 角色和阶段定义位于 `backend/app/agents/interviewer/AGENT.md`；LangGraph 编排位于 `backend/app/agents/interviewer/`；可执行 Skill 位于 `backend/app/runtime_skills/`。更换模型供应商时应新增 LLM 适配器，而不是修改 Agent 流程。
 
 ## 3. 首次安装本地后端
 

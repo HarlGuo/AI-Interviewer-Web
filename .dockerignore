@@ -16,6 +16,8 @@ deploy
 .env.*
 backend/.env
 *.md
+!backend/app/agents/interviewer/AGENT.md
+!backend/app/runtime_skills/**/SKILL.md
 __pycache__
 *.py[cod]
 .DS_Store

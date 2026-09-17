@@ -8,7 +8,7 @@ from app.schemas import AnswerEvidence, ReportRequest, SpeechDeliveryMetrics
 
 class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
     @patch("app.deepseek.settings")
-    @patch("app.deepseek.chat_json", new_callable=AsyncMock)
+    @patch("app.runtime_skills.report_generation.skill.chat_json", new_callable=AsyncMock)
     async def test_unverifiable_evidence_is_safely_downgraded(self, chat: AsyncMock, settings: object) -> None:
         settings.deepseek_api_key = "configured"
         chat.return_value = {
@@ -32,7 +32,7 @@ class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report.question_reviews[0].evidence, ["不知道"])
 
     @patch("app.deepseek.settings")
-    @patch("app.deepseek.chat_json", new_callable=AsyncMock)
+    @patch("app.runtime_skills.report_generation.skill.chat_json", new_callable=AsyncMock)
     async def test_question_ids_are_grounded_to_exact_answer_text(self, chat: AsyncMock, settings: object) -> None:
         settings.deepseek_api_key = "configured"
         chat.return_value = {

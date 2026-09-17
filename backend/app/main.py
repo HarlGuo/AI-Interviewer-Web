@@ -14,8 +14,8 @@ from .ai_resume_reviewer import review_resume
 from .auth import CurrentUser, get_current_user
 from .access_control import commit_daily_interview, release_daily_interview, require_approved, reserve_daily_interview
 from .config import settings
-from .agents.interview_graph import advance_interview, start_interview
-from .deepseek import DeepSeekNotConfiguredError, generate_report
+from .agents.interviewer import interviewer_agent
+from .deepseek import DeepSeekNotConfiguredError
 from .llm.deepseek import LLMNotConfiguredError
 from .resume_parser import parse_pdf
 from .schemas import AnalyticsEventRequest, FeedbackRequest, InterviewAgentStartRequest, InterviewReport, InterviewStartResponse, InterviewStatusRequest, InterviewTurnRequest, InterviewTurnResponse, ReportRequest, ResumeParseResponse
@@ -70,7 +70,7 @@ async def create_interview(config: InterviewAgentStartRequest, _user: CurrentUse
         raise HTTPException(status_code=503, detail="面试记录暂时无法创建，请稍后重试")
     context_token = set_telemetry_context(user_id=_user.id, interview_id=interview_id)
     try:
-        result = await start_interview(config, interview_id=interview_id)
+        result = await interviewer_agent.start(config, interview_id=interview_id)
         saved = await record_interview_start(_user.id, config, result)
         if settings.analytics_enabled and not saved:
             await release_daily_interview(_user, reservation_id)
@@ -99,7 +99,7 @@ async def interview_turn(request: InterviewTurnRequest, _user: CurrentUser = Dep
     await require_approved(_user)
     context_token = set_telemetry_context(user_id=_user.id, interview_id=request.interview_id)
     try:
-        result = await advance_interview(request)
+        result = await interviewer_agent.advance(request)
         await record_interview_turn(_user.id, request, result)
         return result
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:
@@ -118,7 +118,7 @@ async def create_report(request: ReportRequest, _user: CurrentUser = Depends(get
     interview_id = str(request.interview_id)
     context_token = set_telemetry_context(user_id=_user.id, interview_id=interview_id)
     try:
-        report = await generate_report(request)
+        report = await interviewer_agent.report(request)
         await record_report(_user.id, interview_id, report)
         return report
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:

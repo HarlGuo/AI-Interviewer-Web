@@ -32,9 +32,9 @@ class Settings:
     supabase_secret_key: str | None = (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip() or None
     supabase_jwt_audience: str = os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated")
     app_version: str = os.getenv("APP_VERSION", "development").strip() or "development"
-    agent_version: str = os.getenv("AGENT_VERSION", "interview-graph-v1").strip() or "interview-graph-v1"
-    prompt_version: str = os.getenv("PROMPT_VERSION", "interview-prompts-v1").strip() or "interview-prompts-v1"
-    skill_version: str = os.getenv("SKILL_VERSION", "resume-interview-skills-v1").strip() or "resume-interview-skills-v1"
+    agent_version: str = os.getenv("AGENT_VERSION", "resume-interviewer-v2").strip() or "resume-interviewer-v2"
+    prompt_version: str = os.getenv("PROMPT_VERSION", "runtime-skill-instructions-v2").strip() or "runtime-skill-instructions-v2"
+    skill_version: str = os.getenv("SKILL_VERSION", "runtime-skills-v2").strip() or "runtime-skills-v2"
     rubric_version: str = os.getenv("RUBRIC_VERSION", "behavior-anchor-v1").strip() or "behavior-anchor-v1"
 
     @property
