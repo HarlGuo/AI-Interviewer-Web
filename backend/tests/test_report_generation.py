@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.deepseek import generate_report
 from app.scoring import DIMENSIONS
-from app.schemas import AnswerEvidence, ReportRequest
+from app.schemas import AnswerEvidence, ReportRequest, SpeechDeliveryMetrics
 
 
 class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
@@ -49,10 +49,12 @@ class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
         answer = "我先访谈用户，再根据反馈调整了功能优先级。"
-        request = ReportRequest(interview_id="00000000-0000-4000-8000-000000000001", target_role="产品经理", mode="focused", completed=True, answers=[AnswerEvidence(question_id="q1", question="问题", answer=answer)])
+        metrics = SpeechDeliveryMetrics(duration_ms=20_000, voiced_duration_ms=15_000, pause_count=2, average_pause_ms=1_000, longest_pause_ms=1_200, speech_rate_cpm=220, average_volume=3.2, volume_variation=1.1, sample_count=200)
+        request = ReportRequest(interview_id="00000000-0000-4000-8000-000000000001", target_role="产品经理", mode="focused", completed=True, answers=[AnswerEvidence(question_id="q1", question="问题", answer=answer, delivery_metrics=metrics)])
         report = await generate_report(request)
-        self.assertEqual(report.overall_score, 60)
-        self.assertTrue(all(item.score == 60 and item.evidence == [answer] for item in report.dimensions))
+        self.assertEqual(report.overall_score, 67)
+        self.assertTrue(all(item.evidence == [answer] for item in report.dimensions))
+        self.assertEqual(next(item.score for item in report.dimensions if item.name == "流畅度"), 100)
         self.assertEqual(report.question_reviews[0].evidence, [answer])
         self.assertEqual(report.question_reviews[0].strengths, ["有具体行动"])
 

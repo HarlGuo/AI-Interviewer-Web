@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from ..ai_resume_reviewer import EMAIL_PATTERN, PHONE_PATTERN
 from ..llm.deepseek import chat_json
 from ..prompts.interview import EVALUATION_SYSTEM_PROMPT, QUESTION_SYSTEM_PROMPT
+from ..presentation import clean_user_facing_text
 from ..schemas import InterviewAgentStartRequest, InterviewQuestion, InterviewTurnRequest, ResumeSection
 
 MAX_FOLLOW_UPS = 2
@@ -62,7 +63,7 @@ async def generate_main_question(request: InterviewAgentStartRequest, stage: str
     generated = GeneratedQuestion.model_validate(await chat_json(messages=[{"role": "system", "content": QUESTION_SYSTEM_PROMPT}, {"role": "user", "content": "输入 JSON：\n" + json.dumps(data, ensure_ascii=False)}], temperature=0.2, max_tokens=1200, purpose="question_generation"))
     resume_text = "\n".join(x.content for x in request.resume_sections if x.title not in {"基本信息", "其他"})
     evidence = generated.resume_evidence if generated.resume_evidence and generated.resume_evidence in resume_text else ""
-    return InterviewQuestion(id=str(uuid4()), stage=STAGE_LABELS[stage], text=generated.question.strip(), is_follow_up=False, main_question_index=index, follow_up_count=0, resume_evidence=evidence)
+    return InterviewQuestion(id=str(uuid4()), stage=STAGE_LABELS[stage], text=clean_user_facing_text(generated.question), is_follow_up=False, main_question_index=index, follow_up_count=0, resume_evidence=clean_user_facing_text(evidence))
 
 
 async def evaluate_answer(request: InterviewTurnRequest, latest_answer: str) -> AnswerDecision:

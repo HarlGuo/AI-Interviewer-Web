@@ -81,7 +81,7 @@ async def create_interview(config: InterviewAgentStartRequest, _user: CurrentUse
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:
         await release_daily_interview(_user, reservation_id)
         await update_interview_status(_user.id, interview_id, "failed")
-        raise HTTPException(status_code=503, detail="面试 Agent 尚未配置") from error
+        raise HTTPException(status_code=503, detail="面试服务暂不可用，请稍后重试") from error
     except HTTPError as error:
         await release_daily_interview(_user, reservation_id)
         await update_interview_status(_user.id, interview_id, "failed")
@@ -103,7 +103,7 @@ async def interview_turn(request: InterviewTurnRequest, _user: CurrentUser = Dep
         await record_interview_turn(_user.id, request, result)
         return result
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:
-        raise HTTPException(status_code=503, detail="面试 Agent 尚未配置") from error
+        raise HTTPException(status_code=503, detail="面试服务暂不可用，请稍后重试") from error
     except HTTPError as error:
         raise HTTPException(status_code=502, detail="动态追问生成失败，请稍后重试") from error
     except (KeyError, ValueError, RuntimeError) as error:

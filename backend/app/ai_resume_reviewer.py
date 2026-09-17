@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from .config import settings
 from .deepseek_client import chat_json
 from .schemas import ResumeParseResponse, ResumeSection
+from .presentation import clean_user_facing_text
 
 ALLOWED_SECTIONS = ("基本信息", "个人总结", "教育经历", "工作/实习经历", "项目经历", "技能/证书及其他", "其他")
 EMAIL_PATTERN = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
@@ -69,8 +70,8 @@ async def review_resume(parsed: ResumeParseResponse) -> ResumeParseResponse:
     return parsed.model_copy(update={
         "sections": [ResumeSection(title=title, content="\n".join(grouped[title])) for title in order],
         "review_status": "ai_verified",
-        "review_issues": response.issues,
-        "warnings": parsed.warnings + ["AI 已完成行级分类复核；所有原文行均通过完整性校验，仍需用户最终确认。"],
+        "review_issues": [cleaned for issue in response.issues if (cleaned := clean_user_facing_text(issue))],
+        "warnings": parsed.warnings + ["内容提取和结构检查已完成，请核对后确认。"],
     })
 
 

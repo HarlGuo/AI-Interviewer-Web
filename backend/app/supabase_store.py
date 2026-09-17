@@ -191,21 +191,32 @@ async def record_interview_turn(
     result: InterviewTurnResponse,
 ) -> None:
     latest = request.answers[-1]
-    await _request(
+    answer_row = {
+        "id": str(uuid4()),
+        "user_id": user_id,
+        "interview_id": request.interview_id,
+        "question_id": latest.question_id,
+        "answer_text": latest.answer,
+        "source": latest.source,
+        "delivery_metrics": latest.delivery_metrics.model_dump() if latest.delivery_metrics else {},
+        "confirmed_by_user": True,
+        "submitted_at": _now(),
+    }
+    answer_saved = await _request(
         "POST", "interview_answers",
         params={"on_conflict": "question_id"},
         prefer="resolution=merge-duplicates,return=minimal",
-        payload={
-            "id": str(uuid4()),
-            "user_id": user_id,
-            "interview_id": request.interview_id,
-            "question_id": latest.question_id,
-            "answer_text": latest.answer,
-            "source": latest.source,
-            "confirmed_by_user": True,
-            "submitted_at": _now(),
-        },
+        payload=answer_row,
     )
+    if not answer_saved and latest.delivery_metrics:
+        # Keep answer persistence compatible while a deployment and its database migration roll out.
+        answer_row.pop("delivery_metrics", None)
+        await _request(
+            "POST", "interview_answers",
+            params={"on_conflict": "question_id"},
+            prefer="resolution=merge-duplicates,return=minimal",
+            payload=answer_row,
+        )
     if result.next_question:
         await _request("POST", "interview_questions", payload=_question_row(
             user_id=user_id,

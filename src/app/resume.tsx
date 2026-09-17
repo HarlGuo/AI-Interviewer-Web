@@ -7,6 +7,7 @@ import { Button, Card, Screen } from '@/components/ui';
 import { ApiNotConfiguredError, resumeGateway } from '@/services/gateways';
 import { showMessage } from '@/services/dialogs';
 import { track } from '@/services/telemetry';
+import { cleanUserFacingText } from '@/services/user-facing-text';
 import { useApp } from '@/state/app-context';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -71,7 +72,7 @@ export default function ResumeScreen() {
     {resume && ['uploaded', 'failed'].includes(resume.status) ? <Button label={busy ? '正在解析并复核…' : resume.status === 'failed' ? '重新解析' : '解析并使用 AI 复核'} disabled={busy} onPress={parse} /> : null}
     {busy ? <View style={styles.busy}><ActivityIndicator color={colors.primary} /><Text style={styles.busyText}>正在提取文本、脱敏、AI 分类并校验完整性，请勿重复点击</Text></View> : null}
     {resume?.sections.map((section) => <View key={section.title} style={styles.section}><Pressable onPress={() => toggle(section.title)} style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.title}</Text><Text style={styles.chevron}>{expanded.includes(section.title) ? '▾' : '▸'}</Text></Pressable>{expanded.includes(section.title) ? <Text selectable style={styles.sectionBody}>{section.content}</Text> : null}</View>)}
-    {resume?.warnings.map((warning, index) => <Text key={`${warning}-${index}`} style={styles.warning}>• {warning}</Text>)}
+    {resume?.warnings.map(cleanUserFacingText).filter(Boolean).map((warning, index) => <Text key={`${warning}-${index}`} style={styles.warning}>• {warning}</Text>)}
     {resume?.status === 'reviewed' ? <><Card tone="blue"><Text style={styles.confirmText}>请逐项检查。AI 验证只表示结构完整性检查通过，不保证简历陈述真实或绝对零错误。</Text></Card><Button label="我已检查，确认这份简历" onPress={confirm} /></> : null}
     {resume?.status === 'confirmed' ? <Button label="进入面试设置" onPress={goSetup} /> : null}
   </Screen>;

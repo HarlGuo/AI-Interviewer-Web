@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ResumeSection(BaseModel):
@@ -51,6 +51,30 @@ class InterviewAgentStartRequest(InterviewConfig):
     resume_review_status: Literal["ai_verified"]
 
 
+class SpeechDeliveryMetrics(BaseModel):
+    duration_ms: int = Field(ge=0, le=30 * 60 * 1000)
+    voiced_duration_ms: int = Field(ge=0, le=30 * 60 * 1000)
+    pause_count: int = Field(ge=0, le=500)
+    average_pause_ms: int = Field(ge=0, le=30 * 60 * 1000)
+    longest_pause_ms: int = Field(ge=0, le=30 * 60 * 1000)
+    speech_rate_cpm: int = Field(ge=0, le=2000)
+    average_volume: float = Field(ge=-2, le=10)
+    volume_variation: float = Field(ge=0, le=12)
+    sample_count: int = Field(ge=0, le=100_000)
+
+    @model_validator(mode="after")
+    def validate_internal_consistency(self) -> "SpeechDeliveryMetrics":
+        if self.voiced_duration_ms > self.duration_ms:
+            raise ValueError("有效发声时长不能超过回答时长")
+        if self.pause_count == 0 and (self.average_pause_ms or self.longest_pause_ms):
+            raise ValueError("没有停顿时，停顿时长必须为 0")
+        if self.pause_count and self.average_pause_ms > self.longest_pause_ms:
+            raise ValueError("平均停顿不能超过最长停顿")
+        if self.average_pause_ms * self.pause_count > self.duration_ms:
+            raise ValueError("停顿总时长不能超过回答时长")
+        return self
+
+
 class InterviewTurnAnswer(BaseModel):
     question_id: str
     question: str
@@ -58,6 +82,7 @@ class InterviewTurnAnswer(BaseModel):
     stage: str
     is_follow_up: bool
     source: Literal["text", "speech_transcript"] = "text"
+    delivery_metrics: SpeechDeliveryMetrics | None = None
 
 
 class InterviewTurnRequest(InterviewAgentStartRequest):
@@ -78,6 +103,7 @@ class AnswerEvidence(BaseModel):
     question_id: str
     question: str
     answer: str = Field(min_length=1, max_length=12_000)
+    delivery_metrics: SpeechDeliveryMetrics | None = None
 
 
 class ReportRequest(BaseModel):

@@ -1,4 +1,4 @@
-import { AnswerSource, FeedbackSubmission, InterviewQuestion, InterviewReport, InterviewSession, ResumeFile, ResumeSection } from '@/domain/models';
+import { AnswerSource, FeedbackSubmission, InterviewQuestion, InterviewReport, InterviewSession, ResumeFile, ResumeSection, SpeechDeliveryMetrics } from '@/domain/models';
 import { Platform } from 'react-native';
 import { getAccessToken } from '@/services/supabase';
 
@@ -56,15 +56,15 @@ export const interviewGateway = {
   async start(session: InterviewSession, resume: ResumeFile): Promise<{ interview_id: string; question: InterviewQuestion; total_main_questions: number; source: string }> {
     return parseResponse(await request(apiUrl('/v1/interviews'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resume_id: resume.id, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus }) }));
   },
-  async turn(session: InterviewSession, resume: ResumeFile, answer: string, source: AnswerSource): Promise<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number }> {
+  async turn(session: InterviewSession, resume: ResumeFile, answer: string, source: AnswerSource, deliveryMetrics: SpeechDeliveryMetrics | null): Promise<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number }> {
     const current = session.questions[session.currentIndex];
-    const answers = [...session.answers.map((item) => ({ question_id: item.questionId, question: item.question, answer: item.answer, stage: item.stage, is_follow_up: item.isFollowUp, source: item.source ?? 'text' })), { question_id: current.id, question: current.text, answer, stage: current.stage, is_follow_up: current.is_follow_up, source }];
+    const answers = [...session.answers.map((item) => ({ question_id: item.questionId, question: item.question, answer: item.answer, stage: item.stage, is_follow_up: item.isFollowUp, source: item.source ?? 'text', delivery_metrics: item.deliveryMetrics ?? null })), { question_id: current.id, question: current.text, answer, stage: current.stage, is_follow_up: current.is_follow_up, source, delivery_metrics: deliveryMetrics }];
     const result = await parseResponse<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number }>(await request(apiUrl('/v1/interviews/turn'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus, current_question: current, answers }) }, INTERVIEW_TURN_TIMEOUT_MS));
     if (!result.completed && !result.next_question) throw new Error('后端未返回下一道问题，请重新提交当前回答。');
     return result;
   },
   async report(session: InterviewSession): Promise<InterviewReport> {
-    return parseResponse(await request(apiUrl('/v1/reports'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, target_role: session.target.title, mode: session.mode, completed: session.status === 'completed', answers: session.answers.map((item) => ({ question_id: item.questionId, question: item.question, answer: item.answer })) }) }, REPORT_TIMEOUT_MS));
+    return parseResponse(await request(apiUrl('/v1/reports'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, target_role: session.target.title, mode: session.mode, completed: session.status === 'completed', answers: session.answers.map((item) => ({ question_id: item.questionId, question: item.question, answer: item.answer, delivery_metrics: item.deliveryMetrics ?? null })) }) }, REPORT_TIMEOUT_MS));
   },
   async updateStatus(interviewId: string, status: 'active' | 'paused' | 'ended-early') {
     return parseResponse<{ saved: boolean }>(await request(apiUrl(`/v1/interviews/${interviewId}/status`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }));

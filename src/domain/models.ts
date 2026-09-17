@@ -7,7 +7,11 @@ export type TrainingFocus = 'self-introduction' | 'resume-deep-dive' | 'behavior
 export type SessionStatus = 'draft' | 'active' | 'paused' | 'completed' | 'ended-early';
 export type InterviewQuestion = { id: string; stage: string; text: string; is_follow_up: boolean; main_question_index: number; follow_up_count: number; resume_evidence: string };
 export type AnswerSource = 'text' | 'speech_transcript';
-export type InterviewAnswer = { questionId: string; question: string; answer: string; stage: string; isFollowUp: boolean; source: AnswerSource };
+export type SpeechDeliveryMetrics = {
+  duration_ms: number; voiced_duration_ms: number; pause_count: number; average_pause_ms: number;
+  longest_pause_ms: number; speech_rate_cpm: number; average_volume: number; volume_variation: number; sample_count: number;
+};
+export type InterviewAnswer = { questionId: string; question: string; answer: string; stage: string; isFollowUp: boolean; source: AnswerSource; deliveryMetrics?: SpeechDeliveryMetrics | null };
 export type InterviewSession = {
   id: string; mode: InterviewMode; focus: TrainingFocus | null; target: TargetRole; resumeId: string | null;
   status: SessionStatus; interviewId: string | null; questions: InterviewQuestion[]; currentIndex: number; answers: InterviewAnswer[]; totalMainQuestions: number;
