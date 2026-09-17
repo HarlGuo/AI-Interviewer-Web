@@ -15,18 +15,29 @@ import { useApp } from '@/state/app-context';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 export default function InterviewScreen() {
-  const { state, activateSession, updateAnswerDraft, applyInterviewTurn, setSessionStatus, clearSession } = useApp();
+  const { state, hydrated, activateSession, updateAnswerDraft, applyInterviewTurn, setSessionStatus, clearSession } = useApp();
   const session = state.activeSession;
   const [answer, setAnswer] = useState(session?.answerDraft ?? ''); const [starting, setStarting] = useState(false); const [submitting, setSubmitting] = useState(false); const [recognizing, setRecognizing] = useState(false); const [speechStatus, setSpeechStatus] = useState(''); const startLock = useRef(false);
   const [feedbackType, setFeedbackType] = useState<'completed' | 'ended_early' | null>(null); const [feedbackSubmitting, setFeedbackSubmitting] = useState(false); const [feedbackError, setFeedbackError] = useState(''); const [finishWithoutReport, setFinishWithoutReport] = useState(false);
   const currentQuestionId = session?.questions[session.currentIndex]?.id ?? null;
-  const keepListeningRef = useRef(false); const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const answerBeforeSpeechRef = useRef(''); const finalSpeechRef = useRef(''); const answerRef = useRef(session?.answerDraft ?? ''); const pendingAutoSubmitRef = useRef(false); const submittingRef = useRef(false); const submitLatestRef = useRef<() => Promise<void>>(async () => undefined); const previousQuestionIdRef = useRef(currentQuestionId); const speechUsedRef = useRef(false); const recordingStartedAtRef = useRef<number | null>(null); const presentedQuestionRef = useRef<string | null>(null); const deliveryTrackerRef = useRef(new SpeechDeliveryTracker()); const deliveryMetricsRef = useRef<ReturnType<SpeechDeliveryTracker['finish']>>(null);
+  const keepListeningRef = useRef(false); const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const answerBeforeSpeechRef = useRef(''); const finalSpeechRef = useRef(''); const answerRef = useRef(session?.answerDraft ?? ''); const pendingAutoSubmitRef = useRef(false); const submittingRef = useRef(false); const submitLatestRef = useRef<() => Promise<void>>(async () => undefined); const updateAnswerDraftRef = useRef(updateAnswerDraft); const previousQuestionIdRef = useRef(currentQuestionId); const speechUsedRef = useRef(false); const recordingStartedAtRef = useRef<number | null>(null); const presentedQuestionRef = useRef<string | null>(null); const deliveryTrackerRef = useRef(new SpeechDeliveryTracker()); const deliveryMetricsRef = useRef<ReturnType<SpeechDeliveryTracker['finish']>>(null);
 
   const joinTranscript = (base: string, speech: string) => [base.trim(), speech.trim()].filter(Boolean).join(base.trim() && speech.trim() ? '\n' : '');
-  const setCurrentAnswer = (text: string) => { answerRef.current = text; setAnswer(text); };
+  updateAnswerDraftRef.current = updateAnswerDraft;
+  const persistDraft = () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); draftTimerRef.current = null; void updateAnswerDraftRef.current(answerRef.current); };
+  const setCurrentAnswer = (text: string) => {
+    answerRef.current = text; setAnswer(text);
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(persistDraft, 500);
+  };
   const resetAnswerInput = () => {
     answerBeforeSpeechRef.current = ''; finalSpeechRef.current = ''; answerRef.current = '';
     pendingAutoSubmitRef.current = false; deliveryMetricsRef.current = null; setAnswer(''); setSpeechStatus('');
+  };
+  const restoreAnswerInput = (text: string) => {
+    answerBeforeSpeechRef.current = ''; finalSpeechRef.current = ''; answerRef.current = text;
+    pendingAutoSubmitRef.current = false; deliveryMetricsRef.current = null; setAnswer(text);
+    setSpeechStatus(text ? '已恢复上次未提交的回答。' : '');
   };
   const startRecognizer = () => {
     const onDevice = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
@@ -56,6 +67,7 @@ export default function InterviewScreen() {
     }
     setRecognizing(false);
     if (speechUsedRef.current) deliveryMetricsRef.current = deliveryTrackerRef.current.finish(answerRef.current);
+    persistDraft();
     if (recordingStartedAtRef.current) { const seconds = Math.round((Date.now() - recordingStartedAtRef.current) / 1000); track('recording_stopped', { recording_duration_bucket: seconds < 60 ? '<1m' : seconds < 180 ? '1-3m' : '3m+' }, session?.interviewId); recordingStartedAtRef.current = null; }
     if (pendingAutoSubmitRef.current) {
       setSpeechStatus('录音回答已结束，正在提交给面试官…');
@@ -76,6 +88,7 @@ export default function InterviewScreen() {
     }
     keepListeningRef.current = false; setRecognizing(false);
     deliveryMetricsRef.current = deliveryTrackerRef.current.finish(answerRef.current);
+    persistDraft();
     if (event.error === 'aborted') return;
     const messages: Partial<Record<typeof event.error, string>> = {
       'not-allowed': '未获得麦克风或语音识别权限，可在系统设置中开启，或直接输入文字。',
@@ -93,7 +106,28 @@ export default function InterviewScreen() {
     keepListeningRef.current = false;
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
     if (autoSubmitTimerRef.current) clearTimeout(autoSubmitTimerRef.current);
+    persistDraft();
     ExpoSpeechRecognitionModule.abort();
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const saveBeforeBackground = () => {
+      if (document.visibilityState !== 'hidden') return;
+      persistDraft();
+      if (keepListeningRef.current) {
+        keepListeningRef.current = false;
+        pendingAutoSubmitRef.current = false;
+        ExpoSpeechRecognitionModule.stop();
+        setSpeechStatus('语音已暂停，已识别内容会保留。');
+      }
+    };
+    const saveBeforeUnload = () => persistDraft();
+    document.addEventListener('visibilitychange', saveBeforeBackground);
+    window.addEventListener('pagehide', saveBeforeUnload);
+    return () => {
+      document.removeEventListener('visibilitychange', saveBeforeBackground);
+      window.removeEventListener('pagehide', saveBeforeUnload);
+    };
   }, []);
   useEffect(() => {
     if (previousQuestionIdRef.current === currentQuestionId) return;
@@ -101,15 +135,17 @@ export default function InterviewScreen() {
     keepListeningRef.current = false;
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
     if (autoSubmitTimerRef.current) clearTimeout(autoSubmitTimerRef.current);
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     ExpoSpeechRecognitionModule.abort();
-    resetAnswerInput();
-  }, [currentQuestionId]);
+    restoreAnswerInput(session?.answerDraft ?? '');
+  }, [currentQuestionId, session?.id]);
   useEffect(() => {
     if (!currentQuestionId || presentedQuestionRef.current === currentQuestionId || !session) return;
     presentedQuestionRef.current = currentQuestionId;
     const current = session.questions[session.currentIndex];
     track('question_presented', { stage: current.stage, main_question_index: current.main_question_index, is_follow_up: current.is_follow_up }, session.interviewId);
   }, [currentQuestionId, session]);
+  if (!hydrated) return <Screen><View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>正在恢复面试…</Text></View></Screen>;
   if (!session) return <Screen><Text style={styles.title}>没有可恢复的面试</Text><Button label="返回首页" onPress={() => router.replace('/')} /></Screen>;
 
   const startInterview = async () => {
@@ -196,7 +232,7 @@ export default function InterviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { ...typography.title, color: colors.ink, marginTop: spacing.xl }, top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md }, mode: { color: colors.primary, fontWeight: '800', fontSize: 13 }, role: { ...typography.heading, color: colors.ink, marginTop: 3 }, controls: { flexDirection: 'row', gap: 16 }, control: { color: colors.primary, fontWeight: '800' }, end: { color: colors.danger }, progress: { height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }, progressFill: { height: '100%', backgroundColor: colors.primary },
+  title: { ...typography.title, color: colors.ink, marginTop: spacing.xl }, loading: { minHeight: 240, alignItems: 'center', justifyContent: 'center' }, top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md }, mode: { color: colors.primary, fontWeight: '800', fontSize: 13 }, role: { ...typography.heading, color: colors.ink, marginTop: 3 }, controls: { flexDirection: 'row', gap: 16 }, control: { color: colors.primary, fontWeight: '800' }, end: { color: colors.danger }, progress: { height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }, progressFill: { height: '100%', backgroundColor: colors.primary },
   questionLabel: { color: colors.muted, fontSize: 13, fontWeight: '700' }, question: { ...typography.heading, color: colors.ink, marginVertical: spacing.lg }, evidenceBox: { backgroundColor: colors.primarySoft, borderRadius: radius.sm, padding: 10, marginBottom: spacing.md }, evidence: { color: colors.primary, fontSize: 12, lineHeight: 18 }, generating: { alignItems: 'center', marginTop: 12, gap: 6 },
   answerTitle: { ...typography.heading, color: colors.ink }, helper: { color: colors.muted, fontSize: 13, lineHeight: 19, marginVertical: 6 }, saved: { color: colors.success, fontSize: 12, lineHeight: 18, marginTop: 10 }, modelLink: { color: colors.primary, fontSize: 12, fontWeight: '700', marginTop: 10 }, textarea: { minHeight: 170, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FAFAFA', padding: spacing.md, color: colors.ink, fontSize: 16, lineHeight: 24, marginTop: spacing.md }, analyzing: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm }, actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.md }, pausedTitle: { color: colors.warningText, fontWeight: '800', fontSize: 18 },
 });

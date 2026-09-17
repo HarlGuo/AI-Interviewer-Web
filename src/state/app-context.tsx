@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AnswerSource, AppState, InterviewMode, InterviewQuestion, InterviewReport, ResumeFile, SpeechDeliveryMetrics, TargetRole, TrainingFocus } from '@/domain/models';
 import { loadCloudResume, removeCloudResume, saveCloudResume } from '@/services/resume-cloud';
@@ -24,52 +24,91 @@ type ContextValue = {
 const AppContext = createContext<ContextValue | null>(null);
 
 export function AppProvider({ children }: PropsWithChildren) {
-  const { cloudEnabled, localUserId, user } = useAuth();
+  const { cloudEnabled, localUserId, ready: authReady, user } = useAuth();
   const storageKey = `${STORAGE_KEY_PREFIX}/${localUserId}`;
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
+  const stateRef = useRef<AppState>(initialState);
+  const storageKeyRef = useRef(storageKey);
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+
   useEffect(() => {
+    if (!authReady) return;
+    let cancelled = false;
+    storageKeyRef.current = storageKey;
+    setHydrated(false);
     const hydrate = async () => {
       await AsyncStorage.multiRemove(LEGACY_STORAGE_KEYS);
       const raw = await AsyncStorage.getItem(storageKey);
-      const localState = raw ? { ...initialState, ...JSON.parse(raw) } : initialState;
-      if (cloudEnabled && user) {
-        const resume = await loadCloudResume(user.id);
-        setState({ ...localState, resume });
-      } else {
-        setState(localState);
+      let localState = initialState;
+      if (raw) {
+        try { localState = { ...initialState, ...JSON.parse(raw) }; }
+        catch { await AsyncStorage.removeItem(storageKey); }
       }
+      if (cloudEnabled && user) {
+        try {
+          const resume = await loadCloudResume(user.id);
+          localState = { ...localState, resume };
+        } catch {
+          // A temporary cloud read failure must not erase a locally recoverable interview.
+        }
+      }
+      if (cancelled) return;
+      stateRef.current = localState;
+      setState(localState);
+      setHydrated(true);
     };
-    void hydrate().catch(() => undefined).finally(() => setHydrated(true));
-  }, [cloudEnabled, storageKey, user]);
+    void hydrate().catch(() => {
+      if (!cancelled) {
+        stateRef.current = initialState;
+        setState(initialState);
+        setHydrated(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [authReady, cloudEnabled, storageKey, user?.id]);
 
-  const commit = async (next: AppState) => { setState(next); await AsyncStorage.setItem(storageKey, JSON.stringify(next)); };
+  const commit = useCallback(async (update: (current: AppState) => AppState) => {
+    const next = update(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+    const key = storageKeyRef.current;
+    writeQueueRef.current = writeQueueRef.current
+      .catch(() => undefined)
+      .then(() => AsyncStorage.setItem(key, JSON.stringify(next)));
+    await writeQueueRef.current;
+  }, []);
+
   const value = useMemo<ContextValue>(() => ({
     state, hydrated,
     saveResume: async (resume) => {
       const savedResume = cloudEnabled && user ? await saveCloudResume(user.id, resume) : resume;
-      await commit({ ...state, resume: savedResume });
+      await commit((current) => ({ ...current, resume: savedResume }));
     },
     removeResume: async () => {
-      if (cloudEnabled && user) await removeCloudResume(user.id, state.resume);
-      await commit({ ...state, resume: null });
+      if (cloudEnabled && user) await removeCloudResume(user.id, stateRef.current.resume);
+      await commit((current) => ({ ...current, resume: null }));
     },
-    saveTarget: async (target) => commit({ ...state, target }),
-    startDraftSession: async (input) => commit({ ...state, target: input.target, report: null, activeSession: { id: `${Date.now()}`, ...input, status: 'draft', interviewId: null, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } }),
-    activateSession: async (interviewId, question, totalMainQuestions) => { if (state.activeSession) await commit({ ...state, activeSession: { ...state.activeSession, interviewId, questions: [question], currentIndex: 0, totalMainQuestions, status: 'active', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } }); },
-    updateAnswerDraft: async (answerDraft) => { if (state.activeSession) await commit({ ...state, activeSession: { ...state.activeSession, answerDraft, updatedAt: new Date().toISOString() } }); },
-    setAudioUri: async (audioUri) => { if (state.activeSession) await commit({ ...state, activeSession: { ...state.activeSession, audioUri, updatedAt: new Date().toISOString() } }); },
+    saveTarget: async (target) => commit((current) => ({ ...current, target })),
+    startDraftSession: async (input) => commit((current) => ({ ...current, target: input.target, report: null, activeSession: { id: `${Date.now()}`, ...input, status: 'draft', interviewId: null, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } })),
+    activateSession: async (interviewId, question, totalMainQuestions) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, interviewId, questions: [question], currentIndex: 0, totalMainQuestions, status: 'active', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } } : current),
+    updateAnswerDraft: async (answerDraft) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, answerDraft, updatedAt: new Date().toISOString() } } : current),
+    setAudioUri: async (audioUri) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, audioUri, updatedAt: new Date().toISOString() } } : current),
     applyInterviewTurn: async (answer, source, deliveryMetrics, nextQuestion, completed) => {
-      if (!state.activeSession) return;
-      const session = state.activeSession; const question = session.questions[session.currentIndex]; if (!question) return;
-      const answers = [...session.answers, { questionId: question.id, question: question.text, answer, stage: question.stage, isFollowUp: question.is_follow_up, source, deliveryMetrics }];
-      const questions = nextQuestion ? [...session.questions, nextQuestion] : session.questions;
-      await commit({ ...state, activeSession: { ...session, answers, questions, currentIndex: nextQuestion ? session.currentIndex + 1 : session.currentIndex, status: completed ? 'completed' : 'active', answerDraft: '', audioUri: null, updatedAt: new Date().toISOString() } });
+      await commit((current) => {
+        const session = current.activeSession;
+        if (!session) return current;
+        const question = session.questions[session.currentIndex];
+        if (!question) return current;
+        const answers = [...session.answers, { questionId: question.id, question: question.text, answer, stage: question.stage, isFollowUp: question.is_follow_up, source, deliveryMetrics }];
+        const questions = nextQuestion ? [...session.questions, nextQuestion] : session.questions;
+        return { ...current, activeSession: { ...session, answers, questions, currentIndex: nextQuestion ? session.currentIndex + 1 : session.currentIndex, status: completed ? 'completed' : 'active', answerDraft: '', audioUri: null, updatedAt: new Date().toISOString() } };
+      });
     },
-    setSessionStatus: async (status) => { if (state.activeSession) await commit({ ...state, activeSession: { ...state.activeSession, status, updatedAt: new Date().toISOString() } }); },
-    saveReport: async (report) => commit({ ...state, report }),
-    clearSession: async () => commit({ ...state, activeSession: null, report: null }),
-  }), [cloudEnabled, state, hydrated, storageKey, user]);
+    setSessionStatus: async (status) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, status, updatedAt: new Date().toISOString() } } : current),
+    saveReport: async (report) => commit((current) => ({ ...current, report })),
+    clearSession: async () => commit((current) => ({ ...current, activeSession: null, report: null })),
+  }), [cloudEnabled, commit, hydrated, state, user?.id]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 

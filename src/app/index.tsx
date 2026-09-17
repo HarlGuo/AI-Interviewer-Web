@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BottomNav, Button, Card, Screen } from '@/components/ui';
@@ -17,7 +18,12 @@ const practices: { focus: TrainingFocus; icon: string; title: string; text: stri
 
 export default function HomeScreen() {
   const { hydrated, state } = useApp();
+  const resumable = state.activeSession?.status === 'active' || state.activeSession?.status === 'paused';
+  useEffect(() => {
+    if (hydrated && resumable && state.activeSession?.interviewId && state.activeSession.questions.length) router.replace('/interview');
+  }, [hydrated, resumable, state.activeSession?.id, state.activeSession?.interviewId, state.activeSession?.questions.length]);
   if (!hydrated) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
+  if (resumable && state.activeSession?.interviewId && state.activeSession.questions.length) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.restoring}>正在恢复上次面试…</Text></View>;
   const ready = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
 
   const start = (focus: TrainingFocus | null = null) => {
@@ -55,12 +61,12 @@ export default function HomeScreen() {
     </Pressable>)}</View>
 
     <Card><Text style={styles.tipTitle}>📌 面试小贴士</Text>{['先上传并确认简历，AI 追问才能围绕真实经历', '首次点击录音时才申请麦克风权限，也可全程文字回答', '回答尽量说明背景、个人行动、结果和数据'].map((tip) => <Text key={tip} style={styles.tip}>· {tip}</Text>)}</Card>
-    {state.activeSession?.status === 'active' || state.activeSession?.status === 'paused' ? <Button label="继续上次面试" variant="secondary" onPress={() => router.push('/interview')} /> : null}
+    {resumable ? <Button label="继续上次面试" variant="secondary" onPress={() => router.push('/interview')} /> : null}
   </Screen><BottomNav active="home" onHome={() => undefined} onInterview={() => router.push('/interview-hub')} onReport={openReport} onProfile={() => router.push('/profile')} /></View>;
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.background }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }, brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg },
+  page: { flex: 1, backgroundColor: colors.background }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }, restoring: { color: colors.muted, marginTop: 10 }, brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg },
   brandText: { ...typography.title, color: colors.primary }, brandBadge: { color: colors.primary, backgroundColor: colors.primarySoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, fontWeight: '700' },
   resumeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 }, statusIcon: { fontSize: 24 }, flex: { flex: 1 }, resumeTitle: { fontSize: 16, fontWeight: '800' }, resumeMeta: { color: colors.muted, marginTop: 3, fontSize: 13 }, link: { color: colors.primary, fontWeight: '700' },
   formalCard: { backgroundColor: colors.primary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md }, formalTop: { flexDirection: 'row', justifyContent: 'space-between' }, recommend: { backgroundColor: 'rgba(255,255,255,.18)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 }, recommendText: { color: '#fff', fontWeight: '700' }, formalIcon: { fontSize: 34 },
