@@ -1,2 +1,0 @@
-huaweicloudsdkcore==3.1.214
-huaweicloudsdkfunctiongraph==3.1.213

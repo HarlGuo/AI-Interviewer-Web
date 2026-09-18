@@ -57,7 +57,7 @@ export const resumeGateway = {
 };
 export const interviewGateway = {
   async start(session: InterviewSession, resume: ResumeFile): Promise<{ interview_id: string; question: InterviewQuestion; total_main_questions: number; source: string }> {
-    return parseResponse(await request(apiUrl('/v1/interviews'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resume_id: resume.id, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus }) }));
+    return parseResponse(await request(apiUrl('/v1/interviews'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, resume_id: resume.id, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus }) }));
   },
   async turn(session: InterviewSession, resume: ResumeFile, answer: string, source: AnswerSource, deliveryMetrics: SpeechDeliveryMetrics | null): Promise<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number }> {
     const current = session.questions[session.currentIndex];

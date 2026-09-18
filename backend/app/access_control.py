@@ -37,10 +37,10 @@ async def require_approved(user: CurrentUser) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=labels.get(account_status, "账户当前不可用"))
 
 
-async def reserve_daily_interview(user: CurrentUser) -> str | None:
+async def reserve_daily_interview(user: CurrentUser, reservation_id: str | None = None) -> str | None:
     if settings.auth_mode == "development":
         return None
-    reservation_id = str(uuid4())
+    reservation_id = reservation_id or str(uuid4())
     result = await _rpc(user, "reserve_daily_interview", {"p_reservation_id": reservation_id})
     if not result.get("allowed"):
         reason = result.get("reason")

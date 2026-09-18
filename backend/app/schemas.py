@@ -69,6 +69,7 @@ class InterviewStartResponse(BaseModel):
 
 
 class InterviewAgentStartRequest(InterviewConfig):
+    interview_id: UUID | None = None
     resume_id: UUID | None = None
     resume_sections: list[ResumeSection] = Field(min_length=1, max_length=20)
     resume_review_status: Literal["ai_verified"]
