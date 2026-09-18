@@ -6,6 +6,7 @@ import { InterviewMode, TrainingFocus } from '@/domain/models';
 import { track } from '@/services/telemetry';
 import { showMessage } from '@/services/dialogs';
 import { useApp } from '@/state/app-context';
+import { isQuotaUsedToday, isResumableSession } from '@/state/session-recovery';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 const focuses: { value: TrainingFocus; label: string; caption: string }[] = [
@@ -22,6 +23,11 @@ export default function SetupScreen() {
   const mode = initialMode; const focus = initialFocus; const [showJd, setShowJd] = useState(Boolean(state.target?.jd));
 
   const continueToInterview = async () => {
+    if (isResumableSession(state.activeSession)) {
+      router.replace('/interview');
+      return;
+    }
+    if (isQuotaUsedToday(state)) return showMessage('今日面试次数已用完', '每个账号每天只能完成一次模拟面试，请明天再来。');
     if (!state.resume || state.resume.status !== 'confirmed' || state.resume.reviewStatus !== 'ai_verified') return showMessage('请先确认简历', '完成 PDF 解析、AI 复核和用户确认后才能开始。');
     if (!title.trim()) return showMessage('请填写目标职位', '目标职位用于生成岗位相关问题。');
     const target = { title: title.trim(), jd: jd.trim(), savedAt: new Date().toISOString() };

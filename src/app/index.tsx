@@ -7,7 +7,7 @@ import { TrainingFocus } from '@/domain/models';
 import { track } from '@/services/telemetry';
 import { showMessage } from '@/services/dialogs';
 import { useApp } from '@/state/app-context';
-import { isResumableSession } from '@/state/session-recovery';
+import { isQuotaUsedToday, isResumableSession } from '@/state/session-recovery';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 const practices: { focus: TrainingFocus; icon: string; title: string; text: string; color: string; tint: string }[] = [
@@ -20,6 +20,7 @@ const practices: { focus: TrainingFocus; icon: string; title: string; text: stri
 export default function HomeScreen() {
   const { hydrated, state } = useApp();
   const resumable = isResumableSession(state.activeSession);
+  const quotaUsed = isQuotaUsedToday(state);
   useEffect(() => {
     if (hydrated && resumable) router.replace('/interview');
   }, [hydrated, resumable, state.activeSession?.id]);
@@ -28,11 +29,12 @@ export default function HomeScreen() {
   const ready = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
 
   const start = (focus: TrainingFocus | null = null) => {
+    if (quotaUsed) return showMessage('今日面试次数已用完', '每个账号每天只能完成一次模拟面试，请明天再来。未完成的面试会保存在当前页面。');
     track('interview_mode_selected', { mode: focus ? 'focused' : 'formal', focus, resume_ready: ready });
     router.push({ pathname: ready ? '/setup' : '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };
 
-  const openReport = () => state.report && state.activeSession ? router.push('/report') : showMessage('暂无面试复盘', '完成一次模拟面试后，本次报告和复盘会显示在这里。');
+  const openReport = () => state.report ? router.push('/report') : showMessage('暂无面试复盘', '完成一次模拟面试后，本次报告和复盘会显示在这里。');
 
   return <View style={styles.page}><Screen>
     <View style={styles.brand}><Text style={styles.brandText}>AI 面试官</Text><Text style={styles.brandBadge}>P0</Text></View>
@@ -53,7 +55,7 @@ export default function HomeScreen() {
       <View style={styles.formalTop}><View style={styles.recommend}><Text style={styles.recommendText}>推荐</Text></View><Text style={styles.formalIcon}>🎯</Text></View>
       <Text style={styles.formalTitle}>正式模拟面试</Text><Text style={styles.formalBody}>完整还原面试流程，问题基于已确认简历和目标岗位</Text>
       <View style={styles.tags}>{['自我介绍', '简历深挖', '行为面试', '专业题', 'AI 追问'].map((tag) => <Text key={tag} style={styles.tag}>{tag}</Text>)}</View>
-      <Button label="开始正式模拟 →" onPress={() => start()} />
+      <Button label={quotaUsed ? '今日面试次数已用完' : '开始正式模拟 →'} onPress={() => start()} />
     </View>
 
     <Text style={styles.sectionTitle}>单项专项训练</Text>
@@ -62,6 +64,7 @@ export default function HomeScreen() {
     </Pressable>)}</View>
 
     <Card><Text style={styles.tipTitle}>📌 面试小贴士</Text>{['先上传并确认简历，AI 追问才能围绕真实经历', '首次点击录音时才申请麦克风权限，也可全程文字回答', '回答尽量说明背景、个人行动、结果和数据'].map((tip) => <Text key={tip} style={styles.tip}>· {tip}</Text>)}</Card>
+    {quotaUsed ? <Card tone="warning"><Text style={styles.tipTitle}>今日模拟已使用</Text><Text style={styles.tip}>每个账号每天一次完整面试。未完成的进度会保存在本机，切到其他标签后再回来会回到面试页。</Text></Card> : null}
     {resumable ? <Button label="继续上次面试" variant="secondary" onPress={() => router.push('/interview')} /> : null}
   </Screen><BottomNav active="home" onHome={() => undefined} onInterview={() => router.push('/interview-hub')} onReport={openReport} onProfile={() => router.push('/profile')} /></View>;
 }

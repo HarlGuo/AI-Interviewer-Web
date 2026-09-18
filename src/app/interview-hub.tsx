@@ -7,7 +7,7 @@ import { TrainingFocus } from '@/domain/models';
 import { showMessage } from '@/services/dialogs';
 import { track } from '@/services/telemetry';
 import { useApp } from '@/state/app-context';
-import { isResumableSession } from '@/state/session-recovery';
+import { isQuotaUsedToday, isResumableSession } from '@/state/session-recovery';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 const practices: { focus: TrainingFocus; icon: string; title: string; text: string; color: string; tint: string }[] = [
@@ -24,12 +24,14 @@ export default function InterviewHubScreen() {
     if (hydrated && resumable) router.replace('/interview');
   }, [hydrated, resumable, state.activeSession?.id]);
   const resumeReady = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
+  const quotaUsed = isQuotaUsedToday(state);
   const openSetup = (focus: TrainingFocus | null) => {
+    if (quotaUsed) return showMessage('今日面试次数已用完', '每个账号每天只能完成一次模拟面试，请明天再来。');
     track('interview_mode_selected', { mode: focus ? 'focused' : 'formal', focus, resume_ready: resumeReady });
     if (!resumeReady) return router.push({ pathname: '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
     router.push({ pathname: '/setup', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };
-  const openReport = () => state.report && state.activeSession ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
+  const openReport = () => state.report ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
 
   if (!hydrated || resumable) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.restoring}>正在恢复上次面试…</Text></View>;
   return <View style={styles.page}><Screen>
@@ -40,7 +42,7 @@ export default function InterviewHubScreen() {
       <View style={styles.formalTop}><Text style={styles.recommend}>推荐</Text><Text style={styles.target}>🎯</Text></View>
       <Text style={styles.formalTitle}>正式模拟面试</Text><Text style={styles.formalBody}>完整还原真实面试流程，覆盖全部环节</Text>
       <View style={styles.tags}>{['自我介绍', '简历深挖', '行为面试', '专业题', 'AI 追问'].map((tag) => <Text key={tag} style={styles.tag}>{tag}</Text>)}</View>
-      <Pressable accessibilityRole="button" onPress={() => openSetup(null)} style={styles.formalButton}><Text style={styles.formalButtonText}>开始正式模拟 →</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => openSetup(null)} style={styles.formalButton}><Text style={styles.formalButtonText}>{quotaUsed ? '今日面试次数已用完' : '开始正式模拟 →'}</Text></Pressable>
     </View>
 
     <Text style={styles.sectionTitle}>单项专项训练</Text>

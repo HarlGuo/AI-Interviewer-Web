@@ -172,8 +172,8 @@ async def ingest_analytics_event(request: AnalyticsEventRequest, _user: CurrentU
     return {"accepted": True}
 
 
-# FunctionGraph can serve the exported Expo Web client and API from one HTTP
-# function. Local development keeps using the separate Expo dev server because
+# CloudBase Run serves the exported Expo Web client and API from one container.
+# Local development keeps using the separate Expo dev server because
 # this directory only exists in production packages.
 frontend_dist = Path(__file__).resolve().parents[2] / "dist"
 if frontend_dist.is_dir():

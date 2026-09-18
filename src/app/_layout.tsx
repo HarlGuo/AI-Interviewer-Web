@@ -19,7 +19,7 @@ export default function RootLayout() {
 }
 
 function ProtectedStack() {
-  const { ready, cloudEnabled, user, accountStatus, statusLoading } = useAuth();
+  const { ready, cloudEnabled, user, accountStatus } = useAuth();
   const { hydrated, state } = useApp();
   const segments = useSegments();
   useEffect(() => {
@@ -33,8 +33,10 @@ function ProtectedStack() {
     const onPending = (segments[0] as string | undefined) === 'pending';
     if (!user && !onLogin) router.replace('/login' as Href);
     if (user && accountStatus !== 'approved' && !onPending) router.replace('/pending' as Href);
-    if (user && accountStatus === 'approved' && (onLogin || onPending)) router.replace('/');
-  }, [accountStatus, cloudEnabled, ready, segments, user]);
+    if (user && accountStatus === 'approved' && (onLogin || onPending)) {
+      router.replace(isResumableSession(state.activeSession) ? '/interview' : '/');
+    }
+  }, [accountStatus, cloudEnabled, ready, segments, state.activeSession?.status, user]);
   useEffect(() => {
     if (!hydrated || !isResumableSession(state.activeSession)) return;
     const restoreInterview = () => {
@@ -53,7 +55,7 @@ function ProtectedStack() {
       window.removeEventListener('pageshow', restoreInterview);
     };
   }, [hydrated, segments, state.activeSession?.id, state.activeSession?.status]);
-  if (!ready || (user && statusLoading)) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
+  if (!ready) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
   return <Stack screenOptions={{ headerBackTitle: '返回', headerShadowVisible: false, headerStyle: { backgroundColor: colors.surface }, headerTitleStyle: { color: colors.ink, fontWeight: '700' }, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="pending" options={{ headerShown: false }} />

@@ -38,25 +38,15 @@ AI面试官/
 └── backend/.env.example    # 后端模型配置示例
 ```
 
-## 免费 Web 内测部署
+## 生产部署（腾讯云 CloudBase）
 
-仓库根目录的 `render.yaml` 会创建两个 Render 服务：
+内测环境部署在腾讯云 CloudBase Run 服务 `ai-interviewer-web-git`：一个容器同时提供 Expo Web 页面和 FastAPI。账号、审核状态、每日限额和面试记录保存在 Supabase。
 
-- `ai-interviewer-api-harlguo`：免费 FastAPI + LangGraph 后端。
-- `ai-interviewer-web-harlguo`：免费 Expo Web 静态站点。
+在 CloudBase 控制台对该服务发布新版本（GitHub 仓库 `HarlGuo/AI-Interviewer-Web`，根目录 `Dockerfile`，端口 8080）。DeepSeek API Key、Supabase Secret Key 只放在云托管环境变量中，不要提交到 GitHub。
 
-注册 [Render](https://render.com/) 后选择 **New → Blueprint**，连接本 GitHub 仓库。创建时只在 Render 页面填写以下变量，绝不要提交到 GitHub：
+用户注册后默认只能看到“等待审核”。管理员在 Supabase 打开 **Table Editor → profiles**，将 `account_status` 从 `pending` 改成 `approved`。
 
-- 后端：`DEEPSEEK_API_KEY`、`SUPABASE_PUBLISHABLE_KEY`、`SUPABASE_SECRET_KEY`
-- Web：`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-
-账号、审核状态、每日限额、简历、面试回答、报告、产品事件和模型用量保存在 Supabase。客户端仅保留当前操作状态；后端使用 Secret Key 写入账号隔离的云端记录。
-
-### 审核测试用户
-
-用户注册后默认只能看到“等待审核”。管理员在 Supabase 打开 **Table Editor → profiles**，找到对应用户，将 `account_status` 从 `pending` 改成 `approved`。用户点击“刷新审核状态”后即可进入。
-
-每日面试限制由数据库表 `daily_interview_allowances` 和三个数据库函数原子执行。每个账号按北京时间每天只能成功启动一次。客户端在进入面试页时就会生成稳定的 `interview_id`；同一场启动无论超时重试多少次都使用这个 ID，不会重复扣次。新的不同面试仍受每日一次限制。第一题生成失败会释放预占名额，成功生成第一题后即计一次。请按文件名顺序执行 `supabase/migrations/`，其中 `202609180001_idempotent_daily_interview.sql` 只替换限额函数，不删除现有账号或面试记录。
+每日限额在表 `daily_interview_allowances`：按北京时间每个账号每天只能成功启动一场新面试。`interview_id` 只标识这一场；同一场超时重试不会重复扣次。面试未完成时进度保存在本机，切回页面会恢复；完成后首页显示今日次数已用完。按文件名顺序执行 `supabase/migrations/`。
 
 ## 本地运行要求
 
@@ -509,36 +499,6 @@ Key 没有写在正确位置。只检查 `backend/.env`，不要把 Key 写到�
 8. 每道主问题最多追问两次；完成后查看证据型面试报告。
 
 AI 复核不能保证简历绝对零错误，也不验证简历陈述真实性。报告仅用于练习反馈，不代表录用概率。
-
-## 华为云自动部署（一次配置，之后自动更新）
-
-本项目通过 GitHub Actions 构建 Web 页面和 Python 后端，再使用华为云官方 SDK 更新 FunctionGraph。启用后，只需把代码推送到 `main`，无需在控制台重新下载、选择和上传 ZIP。
-
-### 第一次配置
-
-1. 在华为云创建一个专门用于自动部署的 IAM 用户，不要使用主账号永久访问密钥。
-2. 给该用户授予更新目标函数代码所需的最小权限 `functiongraph:function:updateFunctionCode`，然后创建一组 AK/SK。
-3. 打开 GitHub 仓库的 `Settings` → `Secrets and variables` → `Actions`。
-4. 在 `Secrets` 中添加：
-   - `HUAWEICLOUD_ACCESS_KEY_ID`：IAM 用户的 AK。
-   - `HUAWEICLOUD_SECRET_ACCESS_KEY`：IAM 用户的 SK。
-5. 在 `Variables` 中添加：
-   - `HUAWEICLOUD_REGION`：例如 `cn-north-4`。
-   - `HUAWEICLOUD_PROJECT_ID`：函数所在区域的项目 ID。
-   - `FUNCTIONGRAPH_FUNCTION_URN`：FunctionGraph 函数详情页显示的完整 URN，包含末尾的 `:latest`。
-   - `EXPO_PUBLIC_SUPABASE_URL`：Supabase 项目 URL。
-   - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`：Supabase Publishable Key。它本来就是前端公钥，不是 `service_role` 密钥。
-   - `HUAWEICLOUD_DEPLOY_ENABLED`：确认以上信息完整后设为 `true`。
-
-DeepSeek API Key、Supabase `service_role` Key 等服务端密钥仍只配置在 FunctionGraph 的“环境变量”中。它们不会进入 GitHub 仓库或前端安装包，代码更新也不会覆盖现有函数环境变量。
-
-### 以后每次发布
-
-将通过本地测试的代码合并或推送到 `main`。在 GitHub 仓库的 `Actions` 页面可以看到“部署到华为云 FunctionGraph”任务；绿色对勾表示部署成功。连续快速推送时，旧任务会自动取消，只部署最新版本。
-
-如果暂时不想自动部署，把仓库变量 `HUAWEICLOUD_DEPLOY_ENABLED` 改为 `false`；流水线会安全跳过。也可以在 `Actions` 页面手动运行该任务。
-
-FunctionGraph 仍需在控制台一次性设置足够的内存和超时时间；AI 面试请求建议至少 512 MB、300 秒。自动部署只更新代码，不修改密钥、数据库或运行参数。
 
 ## 测试与检查
 

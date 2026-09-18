@@ -5,10 +5,11 @@ import { AnswerSource, AppState, InterviewMode, InterviewQuestion, InterviewRepo
 import { createUuid } from '@/services/ids';
 import { loadCloudResume, removeCloudResume, saveCloudResume } from '@/services/resume-cloud';
 import { useAuth } from '@/state/auth-context';
+import { beijingDate, isResumableSession } from '@/state/session-recovery';
 
 const STORAGE_KEY_PREFIX = '@ai-interviewer/app-state/v4';
 const LEGACY_STORAGE_KEYS = ['@ai-interviewer/app-state/v2'];
-const initialState: AppState = { resume: null, target: null, activeSession: null, report: null };
+const initialState: AppState = { resume: null, target: null, activeSession: null, report: null, quotaConsumedOn: null };
 
 type ContextValue = {
   state: AppState; hydrated: boolean;
@@ -93,13 +94,16 @@ export function AppProvider({ children }: PropsWithChildren) {
     },
     saveTarget: async (target) => commit((current) => ({ ...current, target })),
     startDraftSession: async (input) => commit((current) => {
+      if (isResumableSession(current.activeSession)) {
+        return { ...current, target: input.target };
+      }
       const interviewId = createUuid();
       return { ...current, target: input.target, report: null, activeSession: { id: interviewId, ...input, status: 'draft', interviewId, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } };
     }),
     ensureInterviewId: async (interviewId) => commit((current) => current.activeSession && !current.activeSession.interviewId
       ? { ...current, activeSession: { ...current.activeSession, interviewId, updatedAt: new Date().toISOString() } }
       : current),
-    activateSession: async (interviewId, question, totalMainQuestions) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, interviewId, questions: [question], currentIndex: 0, totalMainQuestions, status: 'active', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } } : current),
+    activateSession: async (interviewId, question, totalMainQuestions) => commit((current) => current.activeSession ? { ...current, quotaConsumedOn: beijingDate(), activeSession: { ...current.activeSession, interviewId, questions: [question], currentIndex: 0, totalMainQuestions, status: 'active', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } } : current),
     updateAnswerDraft: async (answerDraft) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, answerDraft, updatedAt: new Date().toISOString() } } : current),
     setAudioUri: async (audioUri) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, audioUri, updatedAt: new Date().toISOString() } } : current),
     applyInterviewTurn: async (answer, source, deliveryMetrics, nextQuestion, completed) => {
@@ -110,12 +114,12 @@ export function AppProvider({ children }: PropsWithChildren) {
         if (!question) return current;
         const answers = [...session.answers, { questionId: question.id, question: question.text, answer, stage: question.stage, isFollowUp: question.is_follow_up, source, deliveryMetrics }];
         const questions = nextQuestion ? [...session.questions, nextQuestion] : session.questions;
-        return { ...current, activeSession: { ...session, answers, questions, currentIndex: nextQuestion ? session.currentIndex + 1 : session.currentIndex, status: completed ? 'completed' : 'active', answerDraft: '', audioUri: null, updatedAt: new Date().toISOString() } };
+        return { ...current, quotaConsumedOn: completed ? beijingDate() : current.quotaConsumedOn, activeSession: { ...session, answers, questions, currentIndex: nextQuestion ? session.currentIndex + 1 : session.currentIndex, status: completed ? 'completed' : 'active', answerDraft: '', audioUri: null, updatedAt: new Date().toISOString() } };
       });
     },
-    setSessionStatus: async (status) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, status, updatedAt: new Date().toISOString() } } : current),
+    setSessionStatus: async (status) => commit((current) => current.activeSession ? { ...current, quotaConsumedOn: status === 'ended-early' ? beijingDate() : current.quotaConsumedOn, activeSession: { ...current.activeSession, status, updatedAt: new Date().toISOString() } } : current),
     saveReport: async (report) => commit((current) => ({ ...current, report })),
-    clearSession: async () => commit((current) => ({ ...current, activeSession: null, report: null })),
+    clearSession: async () => commit((current) => ({ ...current, activeSession: null })),
   }), [cloudEnabled, commit, hydrated, state, user?.id]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

@@ -53,4 +53,10 @@ export type FeedbackSubmission = {
   comment: string;
   completion_type: 'completed' | 'ended_early';
 };
-export type AppState = { resume: ResumeFile | null; target: TargetRole | null; activeSession: InterviewSession | null; report: InterviewReport | null };
+export type AppState = {
+  resume: ResumeFile | null;
+  target: TargetRole | null;
+  activeSession: InterviewSession | null;
+  report: InterviewReport | null;
+  quotaConsumedOn: string | null;
+};
