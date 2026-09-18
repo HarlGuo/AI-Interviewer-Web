@@ -3,8 +3,9 @@ import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-import { AppProvider } from '@/state/app-context';
+import { AppProvider, useApp } from '@/state/app-context';
 import { AuthProvider, useAuth } from '@/state/auth-context';
+import { isResumableSession } from '@/state/session-recovery';
 import { flushTelemetry, track } from '@/services/telemetry';
 import { colors } from '@/theme/tokens';
 
@@ -19,6 +20,7 @@ export default function RootLayout() {
 
 function ProtectedStack() {
   const { ready, cloudEnabled, user, accountStatus, statusLoading } = useAuth();
+  const { hydrated, state } = useApp();
   const segments = useSegments();
   useEffect(() => {
     if (!ready || !cloudEnabled || !user) return;
@@ -33,6 +35,24 @@ function ProtectedStack() {
     if (user && accountStatus !== 'approved' && !onPending) router.replace('/pending' as Href);
     if (user && accountStatus === 'approved' && (onLogin || onPending)) router.replace('/');
   }, [accountStatus, cloudEnabled, ready, segments, user]);
+  useEffect(() => {
+    if (!hydrated || !isResumableSession(state.activeSession)) return;
+    const restoreInterview = () => {
+      const leaf = segments[0] as string | undefined;
+      if (!leaf || leaf === 'index' || leaf === 'interview-hub') router.replace('/interview');
+    };
+    restoreInterview();
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') restoreInterview();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', restoreInterview);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', restoreInterview);
+    };
+  }, [hydrated, segments, state.activeSession?.id, state.activeSession?.status]);
   if (!ready || (user && statusLoading)) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
   return <Stack screenOptions={{ headerBackTitle: '返回', headerShadowVisible: false, headerStyle: { backgroundColor: colors.surface }, headerTitleStyle: { color: colors.ink, fontWeight: '700' }, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="login" options={{ headerShown: false }} />

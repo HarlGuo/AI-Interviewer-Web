@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AnswerSource, AppState, InterviewMode, InterviewQuestion, InterviewReport, ResumeFile, SpeechDeliveryMetrics, TargetRole, TrainingFocus } from '@/domain/models';
+import { createUuid } from '@/services/ids';
 import { loadCloudResume, removeCloudResume, saveCloudResume } from '@/services/resume-cloud';
 import { useAuth } from '@/state/auth-context';
 
@@ -14,6 +15,7 @@ type ContextValue = {
   saveResume: (resume: ResumeFile) => Promise<void>; removeResume: () => Promise<void>;
   saveTarget: (target: TargetRole) => Promise<void>;
   startDraftSession: (input: { mode: InterviewMode; focus: TrainingFocus | null; target: TargetRole; resumeId: string | null }) => Promise<void>;
+  ensureInterviewId: (interviewId: string) => Promise<void>;
   activateSession: (interviewId: string, question: InterviewQuestion, totalMainQuestions: number) => Promise<void>;
   updateAnswerDraft: (answerDraft: string) => Promise<void>; setAudioUri: (audioUri: string | null) => Promise<void>;
   applyInterviewTurn: (answer: string, source: AnswerSource, deliveryMetrics: SpeechDeliveryMetrics | null, nextQuestion: InterviewQuestion | null, completed: boolean) => Promise<void>;
@@ -90,7 +92,13 @@ export function AppProvider({ children }: PropsWithChildren) {
       await commit((current) => ({ ...current, resume: null }));
     },
     saveTarget: async (target) => commit((current) => ({ ...current, target })),
-    startDraftSession: async (input) => commit((current) => ({ ...current, target: input.target, report: null, activeSession: { id: `${Date.now()}`, ...input, status: 'draft', interviewId: null, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } })),
+    startDraftSession: async (input) => commit((current) => {
+      const interviewId = createUuid();
+      return { ...current, target: input.target, report: null, activeSession: { id: interviewId, ...input, status: 'draft', interviewId, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } };
+    }),
+    ensureInterviewId: async (interviewId) => commit((current) => current.activeSession && !current.activeSession.interviewId
+      ? { ...current, activeSession: { ...current.activeSession, interviewId, updatedAt: new Date().toISOString() } }
+      : current),
     activateSession: async (interviewId, question, totalMainQuestions) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, interviewId, questions: [question], currentIndex: 0, totalMainQuestions, status: 'active', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } } : current),
     updateAnswerDraft: async (answerDraft) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, answerDraft, updatedAt: new Date().toISOString() } } : current),
     setAudioUri: async (audioUri) => commit((current) => current.activeSession ? { ...current, activeSession: { ...current.activeSession, audioUri, updatedAt: new Date().toISOString() } } : current),

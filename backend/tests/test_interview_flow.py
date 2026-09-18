@@ -18,7 +18,7 @@ def start_request(mode: str = "formal", focus: str | None = None) -> InterviewAg
 
 def turn_request(follow_up_count: int, answer: str) -> InterviewTurnRequest:
     return InterviewTurnRequest(
-        **start_request().model_dump(), interview_id="session-1",
+        **start_request().model_dump(exclude_none=True), interview_id="session-1",
         current_question=InterviewQuestion(id="q1", stage="简历深挖", text="请介绍该项目。", is_follow_up=follow_up_count > 0, main_question_index=1, follow_up_count=follow_up_count),
         answers=[InterviewTurnAnswer(question_id="q1", question="请介绍该项目。", answer=answer, stage="简历深挖", is_follow_up=follow_up_count > 0)],
     )
@@ -35,7 +35,7 @@ def project_turn_request(*, follow_up_count: int = 0, answer: str = "我负责�
         visited_project_evidence=["负责 CoachCraft 产品规划并完成 20 项验收"],
     )
     return InterviewTurnRequest(
-        **start_request().model_dump(),
+        **start_request().model_dump(exclude_none=True),
         interview_id="session-project",
         current_question=InterviewQuestion(
             id=question_id,

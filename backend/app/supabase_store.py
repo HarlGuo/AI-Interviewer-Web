@@ -12,6 +12,7 @@ from .schemas import (
     AnalyticsEventRequest,
     FeedbackRequest,
     InterviewAgentStartRequest,
+    InterviewQuestion,
     InterviewReport,
     InterviewStartResponse,
     InterviewTurnRequest,
@@ -120,6 +121,62 @@ async def upsert_attribution(user_id: str, event: AnalyticsEventRequest) -> bool
     )
 
 
+async def _select(table: str, params: dict[str, str]) -> list[dict[str, Any]]:
+    if not settings.analytics_enabled:
+        return []
+    key = settings.supabase_secret_key or ""
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(
+                f"{settings.supabase_url}/rest/v1/{table}",
+                headers={"Authorization": f"Bearer {key}", "apikey": key},
+                params=params,
+            )
+        if response.status_code >= 400:
+            logger.warning("Supabase read failed table=%s status=%s", table, response.status_code)
+            return []
+        data = response.json()
+        return data if isinstance(data, list) else []
+    except httpx.HTTPError as error:
+        logger.warning("Supabase read unavailable table=%s error=%s", table, type(error).__name__)
+        return []
+
+
+async def load_interview_start(user_id: str, interview_id: str) -> InterviewStartResponse | None:
+    questions = await _select("interview_questions", {
+        "interview_id": f"eq.{interview_id}",
+        "user_id": f"eq.{user_id}",
+        "sequence_no": "eq.1",
+        "select": "id,external_question_id,stage,question_text,is_follow_up,main_question_index,follow_up_count,resume_evidence",
+        "limit": "1",
+    })
+    if not questions:
+        return None
+    interviews = await _select("interviews", {
+        "id": f"eq.{interview_id}",
+        "user_id": f"eq.{user_id}",
+        "select": "id,status,total_main_questions",
+        "limit": "1",
+    })
+    if not interviews or interviews[0].get("status") == "failed":
+        return None
+    row = questions[0]
+    total = interviews[0].get("total_main_questions") or 1
+    return InterviewStartResponse(
+        interview_id=interview_id,
+        question=InterviewQuestion(
+            id=str(row.get("external_question_id") or row.get("id")),
+            stage=row.get("stage") or "自我介绍",
+            text=row.get("question_text") or "",
+            is_follow_up=bool(row.get("is_follow_up")),
+            main_question_index=int(row.get("main_question_index") or 0),
+            follow_up_count=int(row.get("follow_up_count") or 0),
+            resume_evidence=row.get("resume_evidence") or "",
+        ),
+        total_main_questions=max(int(total), 1),
+    )
+
+
 async def record_interview_start(
     user_id: str,
     request: InterviewAgentStartRequest,
@@ -142,32 +199,44 @@ async def record_interview_start(
         "prompt_version": settings.prompt_version,
         "skill_version": settings.skill_version,
     })
-    question_saved = await _request("POST", "interview_questions", payload=_question_row(
-        user_id=user_id,
-        interview_id=interview_id,
-        question=result.question.model_dump(),
-        sequence_no=1,
-    ))
+    question_saved = await _request(
+        "POST",
+        "interview_questions",
+        params={"on_conflict": "interview_id,sequence_no"},
+        prefer="resolution=ignore-duplicates,return=minimal",
+        payload=_question_row(
+            user_id=user_id,
+            interview_id=interview_id,
+            question=result.question.model_dump(),
+            sequence_no=1,
+        ),
+    )
     return interview_saved and question_saved
 
 
 async def record_interview_draft(user_id: str, interview_id: str, request: InterviewAgentStartRequest) -> bool:
     """Create the parent row before the first LLM call so usage can reference it."""
-    return await _request("POST", "interviews", payload={
-        "id": interview_id,
-        "user_id": user_id,
-        "resume_id": str(request.resume_id) if request.resume_id else None,
-        "mode": request.mode,
-        "focus": request.focus,
-        "status": "draft",
-        "target_title_snapshot": request.target_role,
-        "job_description_snapshot": request.job_description,
-        "total_main_questions": 0,
-        "app_version": settings.app_version,
-        "agent_version": settings.agent_version,
-        "prompt_version": settings.prompt_version,
-        "skill_version": settings.skill_version,
-    })
+    return await _request(
+        "POST",
+        "interviews",
+        params={"on_conflict": "id"},
+        prefer="resolution=ignore-duplicates,return=minimal",
+        payload={
+            "id": interview_id,
+            "user_id": user_id,
+            "resume_id": str(request.resume_id) if request.resume_id else None,
+            "mode": request.mode,
+            "focus": request.focus,
+            "status": "draft",
+            "target_title_snapshot": request.target_role,
+            "job_description_snapshot": request.job_description,
+            "total_main_questions": 0,
+            "app_version": settings.app_version,
+            "agent_version": settings.agent_version,
+            "prompt_version": settings.prompt_version,
+            "skill_version": settings.skill_version,
+        },
+    )
 
 
 def _question_row(*, user_id: str, interview_id: str, question: dict[str, Any], sequence_no: int) -> dict[str, Any]:

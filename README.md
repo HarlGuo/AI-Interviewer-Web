@@ -56,7 +56,7 @@ AI面试官/
 
 用户注册后默认只能看到“等待审核”。管理员在 Supabase 打开 **Table Editor → profiles**，找到对应用户，将 `account_status` 从 `pending` 改成 `approved`。用户点击“刷新审核状态”后即可进入。
 
-每日面试限制由数据库表 `daily_interview_allowances` 和三个数据库函数原子执行。每个账号按北京时间每天只能成功启动一次；第一题生成失败会释放预占名额，成功生成第一题后即计一次。
+每日面试限制由数据库表 `daily_interview_allowances` 和三个数据库函数原子执行。每个账号按北京时间每天只能成功启动一次。客户端在进入面试页时就会生成稳定的 `interview_id`；同一场启动无论超时重试多少次都使用这个 ID，不会重复扣次。新的不同面试仍受每日一次限制。第一题生成失败会释放预占名额，成功生成第一题后即计一次。请按文件名顺序执行 `supabase/migrations/`，其中 `202609180001_idempotent_daily_interview.sql` 只替换限额函数，不删除现有账号或面试记录。
 
 ## 本地运行要求
 

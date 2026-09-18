@@ -7,6 +7,7 @@ import { TrainingFocus } from '@/domain/models';
 import { track } from '@/services/telemetry';
 import { showMessage } from '@/services/dialogs';
 import { useApp } from '@/state/app-context';
+import { isResumableSession } from '@/state/session-recovery';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 const practices: { focus: TrainingFocus; icon: string; title: string; text: string; color: string; tint: string }[] = [
@@ -18,12 +19,12 @@ const practices: { focus: TrainingFocus; icon: string; title: string; text: stri
 
 export default function HomeScreen() {
   const { hydrated, state } = useApp();
-  const resumable = state.activeSession?.status === 'active' || state.activeSession?.status === 'paused';
+  const resumable = isResumableSession(state.activeSession);
   useEffect(() => {
-    if (hydrated && resumable && state.activeSession?.interviewId && state.activeSession.questions.length) router.replace('/interview');
-  }, [hydrated, resumable, state.activeSession?.id, state.activeSession?.interviewId, state.activeSession?.questions.length]);
+    if (hydrated && resumable) router.replace('/interview');
+  }, [hydrated, resumable, state.activeSession?.id]);
   if (!hydrated) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
-  if (resumable && state.activeSession?.interviewId && state.activeSession.questions.length) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.restoring}>正在恢复上次面试…</Text></View>;
+  if (resumable) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.restoring}>正在恢复上次面试…</Text></View>;
   const ready = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
 
   const start = (focus: TrainingFocus | null = null) => {
