@@ -36,7 +36,7 @@ export default function SetupScreen() {
   };
 
   return <Screen keyboard>
-    <Text style={styles.heading}>已选择的面试类型</Text><Card tone="blue"><Text style={styles.selectedTitle}>{mode === 'formal' ? '正式模拟面试' : focuses.find((item) => item.value === focus)?.label}</Text><Text style={styles.formalText}>{mode === 'formal' ? '依次覆盖自我介绍、简历深挖、行为面试、岗位专业题和结束反问。' : focuses.find((item) => item.value === focus)?.caption}</Text><Pressable onPress={() => router.back()}><Text style={styles.changeType}>更换面试类型</Text></Pressable></Card>
+    <Text style={styles.heading}>已选择的面试类型</Text><Card tone="blue"><Text style={styles.selectedTitle}>{mode === 'formal' ? '正式模拟面试' : focuses.find((item) => item.value === focus)?.label}</Text><Text style={styles.formalText}>{mode === 'formal' ? '依次覆盖自我介绍、简历深挖、行为面试和岗位专业题，共四轮主问题。' : focuses.find((item) => item.value === focus)?.caption}</Text><Pressable onPress={() => router.back()}><Text style={styles.changeType}>更换面试类型</Text></Pressable></Card>
     <Text style={styles.label}>目标职位 <Text style={styles.required}>* 必填</Text></Text><TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="例：产品经理、前端开发、数据分析师" placeholderTextColor={colors.placeholder} />
     <Pressable onPress={() => setShowJd(!showJd)}><Text style={styles.jdToggle}>{showJd ? '▾' : '▸'} 粘贴岗位 JD（可选）</Text></Pressable>
     {showJd ? <TextInput value={jd} onChangeText={setJd} multiline textAlignVertical="top" style={[styles.input, styles.jd]} placeholder="粘贴真实岗位描述，AI 将据此生成更相关的问题" placeholderTextColor={colors.placeholder} /> : null}

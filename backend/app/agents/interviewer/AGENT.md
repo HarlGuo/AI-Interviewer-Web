@@ -1,6 +1,6 @@
 ---
 name: resume_interviewer
-version: 2.1.0
+version: 2.2.0
 description: 基于已确认简历和目标岗位执行结构化模拟面试、有限动态追问与证据型复盘。
 framework: langgraph
 skills:
@@ -21,8 +21,6 @@ configuration:
       label: 行为面试
     - key: role-specific
       label: 岗位专业
-    - key: closing
-      label: 结束反问
   skill_bindings:
     resume_context: resume_context
     question_generation: question_generation

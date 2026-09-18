@@ -29,7 +29,7 @@ def started_response() -> InterviewStartResponse:
     return InterviewStartResponse(
         interview_id=INTERVIEW_ID,
         question=InterviewQuestion(id="q1", stage="自我介绍", text="请做一段自我介绍。", main_question_index=0, follow_up_count=0),
-        total_main_questions=5,
+        total_main_questions=4,
     )
 
 
@@ -63,11 +63,11 @@ async def test_load_interview_start_maps_first_question(monkeypatch):
                 "follow_up_count": 0,
                 "resume_evidence": "",
             }]
-        return [{"id": INTERVIEW_ID, "status": "active", "total_main_questions": 5}]
+        return [{"id": INTERVIEW_ID, "status": "active", "total_main_questions": 4}]
 
     monkeypatch.setattr("app.supabase_store._select", fake_select)
     result = await load_interview_start(USER.id, INTERVIEW_ID)
     assert result is not None
     assert result.interview_id == INTERVIEW_ID
-    assert result.total_main_questions == 5
+    assert result.total_main_questions == 4
     assert "自我介绍" in result.question.text

@@ -59,14 +59,14 @@ def project_turn_request(*, follow_up_count: int = 0, answer: str = "我负责�
 
 class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
     def test_stage_plans_are_deterministic(self) -> None:
-        self.assertEqual(len(interviewer_agent.policy.stage_plan("formal", None)), 5)
+        self.assertEqual(len(interviewer_agent.policy.stage_plan("formal", None)), 4)
         self.assertEqual(interviewer_agent.policy.stage_plan("focused", "behavioral"), ["behavioral"] * 3)
 
     @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
     async def test_formal_start_uses_stable_skill_template_without_llm(self, generate: AsyncMock) -> None:
         result = await start_interview(start_request())
         self.assertEqual(result.source, "resume_driven_agent")
-        self.assertEqual(result.total_main_questions, 5)
+        self.assertEqual(result.total_main_questions, 4)
         self.assertIn("产品经理", result.question.text)
         self.assertIn("自我介绍", result.question.text)
         generate.assert_not_awaited()
