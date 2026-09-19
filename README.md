@@ -24,15 +24,39 @@
 - Supabase Auth、PostgreSQL RLS 和私有 Storage（账号与云数据基础框架）
 - iOS Speech framework / Android SpeechRecognizer
 
+## 作品集打包（面试演示）
+
+把不含密钥和依赖的源码打成压缩包，方便拷贝到 U 盘或发给面试官：
+
+```bash
+./scripts/package-portfolio.sh
+```
+
+产物在 `build/portfolio/AI-Interviewer-portfolio.zip`。解压后阅读 `docs/DEMO.md`。
+
+若本机已安装 Docker，可在项目根目录一键启动 Web + API：
+
+```bash
+export DEEPSEEK_API_KEY=你自己的Key
+docker compose up --build
+```
+
+然后打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)，使用虚构简历 `examples/sample-resume.pdf` 走完解析、面试和报告。讲解提纲见 [docs/PORTFOLIO.md](docs/PORTFOLIO.md)。
+
+也可在 GitHub Actions 中手动运行工作流「打包作品集压缩包」，从 Artifact 下载同一份 ZIP。
+
 ## 目录结构
 
 ```text
 AI面试官/
 ├── src/                    # 移动端页面、组件、状态和 API gateway
 ├── backend/                # FastAPI、LangGraph Agent、Skills、LLM 与测试
+├── docs/                   # 作品集说明与现场演示步骤
+├── examples/               # 虚构演示简历（非真实个人信息）
 ├── .agents/skills/         # 简历解析与动态面试工作流
 ├── supabase/migrations/    # 数据表、RLS 与私有文件策略
 ├── assets/                 # App 图标和静态资源
+├── docker-compose.yml      # 作品集一体包：Web 静态资源 + FastAPI
 ├── app.json                # Expo 与原生权限配置
 ├── .env.example            # 客户端后端地址示例
 └── backend/.env.example    # 后端模型配置示例

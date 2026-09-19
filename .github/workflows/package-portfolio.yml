@@ -1,0 +1,28 @@
+name: 打包作品集压缩包
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: 生成源码作品集 ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 下载代码
+        uses: actions/checkout@v4
+
+      - name: 打包
+        run: |
+          chmod +x scripts/package-portfolio.sh
+          ./scripts/package-portfolio.sh
+
+      - name: 上传压缩包
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Interviewer-portfolio
+          path: build/portfolio/AI-Interviewer-portfolio.zip
+          if-no-files-found: error
