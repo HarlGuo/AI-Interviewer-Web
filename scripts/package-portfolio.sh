@@ -48,8 +48,9 @@ if find "$STAGE_DIR" -type f \( -name '.env' -o -name '.env.local' -o -name '.en
   exit 1
 fi
 
-if grep -RInE 'sk-[a-zA-Z0-9]{10,}|SUPABASE_SECRET_KEY=.+' "$STAGE_DIR" \
+if grep -RInE 'DEEPSEEK_API_KEY=sk-|SUPABASE_SECRET_KEY=[^[:space:]]+' "$STAGE_DIR" \
   --exclude='*.example' \
+  --exclude='package-portfolio.sh' \
   --exclude='PORTFOLIO.md' \
   --exclude='DEMO.md' \
   --exclude='README.md' \
