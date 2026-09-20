@@ -48,7 +48,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "package:portfolio": "sh ./scripts/package-portfolio.sh"
   },
   "private": true
 }

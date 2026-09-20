@@ -1,8 +1,17 @@
 # AI 面试官
 
-一个面向毕业生和初入职场用户的 AI 模拟面试 App。项目包含 Expo/React Native 客户端与本地 FastAPI 后端，可根据用户确认的 PDF 简历和目标岗位生成个性化问题、有限动态追问与证据型面试报告。
+面向校招和初入职场的模拟面试练习产品。用户确认 PDF 简历和目标岗位后，系统生成个性化问题、有限动态追问，并基于本轮回答给出六维报告。
 
-> 当前为开发测试版本，不提供官方托管的大模型 API 或生产服务。仓库已经包含邮箱密码登录、人工审核、每日面试限额、用户隔离数据库和私有简历存储的基础框架，但需要开发者创建自己的 Supabase 项目才能启用；简历、面试与报告的云端同步仍在实施中。每位开发者需要使用自己的 DeepSeek API Key。请勿提交真实 Key、私人简历或面试数据。
+技术栈是 Expo / React Native、FastAPI 和 LangGraph。线上 Web 已接入 DeepSeek 与 Supabase：体验只需邮箱注册并等待审核，页面上不会要求填写模型 Key 或数据库配置。
+
+## 在线体验
+
+1. 打开作者提供的 Web 地址。
+2. 用邮箱注册，审核通过后登录。
+3. 上传简历（可用仓库中的虚构示例 `examples/sample-resume.pdf`），确认解析结果。
+4. 选择正式模拟或专项训练，填写目标岗位后开始面试。
+
+请不要上传真实个人信息。模型 Key 只存在于服务端环境变量，不会出现在前端。
 
 ## 当前功能
 
@@ -28,19 +37,24 @@
 
 ```text
 AI面试官/
-├── src/                    # 移动端页面、组件、状态和 API gateway
+├── src/                    # 页面、组件、状态和 API gateway
 ├── backend/                # FastAPI、LangGraph Agent、Skills、LLM 与测试
+├── docs/                   # 设计说明与本地快速跑通
+├── examples/               # 虚构演示简历（非真实个人信息）
 ├── .agents/skills/         # 简历解析与动态面试工作流
 ├── supabase/migrations/    # 数据表、RLS 与私有文件策略
 ├── assets/                 # App 图标和静态资源
+├── docker-compose.yml      # 本地一体包：Web 静态资源 + FastAPI
 ├── app.json                # Expo 与原生权限配置
 ├── .env.example            # 客户端后端地址示例
 └── backend/.env.example    # 后端模型配置示例
 ```
 
-## 免费 Web 内测部署
+设计取舍见 [docs/DESIGN.md](docs/DESIGN.md)。本机跑通主路径见 [docs/DEMO.md](docs/DEMO.md)。
 
-仓库根目录的 `render.yaml` 会创建两个 Render 服务：
+## 自行部署（可选）
+
+已有线上环境时不必再走 Render。`render.yaml` 会创建两个服务：
 
 - `ai-interviewer-api-harlguo`：免费 FastAPI + LangGraph 后端。
 - `ai-interviewer-web-harlguo`：免费 Expo Web 静态站点。
@@ -87,7 +101,9 @@ AI面试官/
 
 > 默认 `AUTH_MODE=development`，因此原有本地单人测试不要求注册账号。要测试邮箱注册和用户隔离，请按本文“启用邮箱登录”配置自己的 Supabase 项目。
 
-## 启用邮箱登录（可选，云端开发阶段）
+## 本地对接自己的 Supabase（二次开发）
+
+已部署内测的用户不需要做这一节。只有你在自己电脑上要测「邮箱登录 + 审核 + 日限额」，才需要新建一个 Supabase 项目。
 
 ### 1. 创建属于你的项目
 
@@ -568,12 +584,13 @@ PRIVATE_RESUME_PATH="../local-data/private-resume.pdf" .venv/bin/python -m unitt
 
 ## 隐私和安全
 
-- 模型 Key 只保存在本地后端环境变量中。
+- 已部署环境里，DeepSeek Key 和 Supabase Secret 只存在于云端环境变量，不进 Git，也不进前端安装包。
+- 本地开发时，模型 Key 只写在 `backend/.env`，不要写进 `EXPO_PUBLIC_*`。
 - 联系方式会在简历内容发送给模型前脱敏，但使用者仍应避免上传不必要的敏感信息。
 - 麦克风和语音识别权限只在用户主动点击语音输入后申请。
 - 未经用户确认的语音转写不能提交、评分或进入报告。
-- 当前版本尚未接入登录，开发预览仅适用于单用户本地测试；会话状态保存在当前设备或浏览器，不得把共享设备上的本地状态当作用户隔离。
-- 正式部署前必须补齐鉴权、HTTPS、数据库隔离、密钥管理、隐私政策和数据删除机制。
+- 云端内测已启用邮箱登录、人工审核、每日限额和 RLS 用户隔离；本地默认 `AUTH_MODE=development` 仍是单人调试，不能把本机缓存当成多用户隔离。
+- 正式对公开放前仍应补齐邮箱验证、SMTP、隐私政策和数据删除入口。
 
 ## 更多文档
 
@@ -582,7 +599,6 @@ PRIVATE_RESUME_PATH="../local-data/private-resume.pdf" .venv/bin/python -m unitt
 
 ## 当前限制
 
-- 不提供官方托管的大模型 API 或测试额度。
-- 不提供生产账号、云端同步、对象存储和支付功能。
-- 扫描版 PDF 的 OCR、生产埋点平台和 App Store 正式材料尚未完成。
-- 原生语音识别需要在目标 iOS/Android 设备上验收。
+- 内测用户使用已部署服务时，不需要自己提供 DeepSeek 或 Supabase。仓库本身不内置密钥；你要在本机跑或另外部署时，仍需自备 Key 并配置环境变量。
+- 扫描版 PDF 的 OCR、支付和 App Store 上架材料尚未完成。
+- Web 浏览器语音能力不稳定，原生语音识别需要在目标 iOS/Android 设备上验收。
