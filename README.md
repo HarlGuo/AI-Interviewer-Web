@@ -1,19 +1,17 @@
 # AI 面试官
 
-一个面向毕业生和初入职场用户的 AI 模拟面试 App。已部署的 Web 内测走邮箱注册/登录；服务端已接入 DeepSeek 与 Supabase，**使用者不必申请模型 API Key，也不必自己创建数据库项目**。仓库里的 Expo/React Native 客户端与 FastAPI 后端，可根据用户确认的 PDF 简历和目标岗位生成个性化问题、有限动态追问与证据型面试报告。
+面向校招和初入职场的模拟面试练习产品。用户确认 PDF 简历和目标岗位后，系统生成个性化问题、有限动态追问，并基于本轮回答给出六维报告。
 
-> **内测用户**：用维护者提供的网址打开即可，密钥由服务器环境变量提供，不会出现在页面上让你填写。  
-> **克隆本仓库做本地开发或自己再部署一套**：才需要自备 DeepSeek API Key；若要测登录、审核和日限额，再接入自己的 Supabase。  
-> 请勿把真实 Key、私人简历或面试数据提交进 Git。
+技术栈是 Expo / React Native、FastAPI 和 LangGraph。线上 Web 已接入 DeepSeek 与 Supabase：体验只需邮箱注册并等待审核，页面上不会要求填写模型 Key 或数据库配置。
 
-## 内测用户怎么用
+## 在线体验
 
-1. 打开维护者发给你的 Web 地址（华为云 FunctionGraph 或当前对外的前端网址），不要把本 README 后半段的本地命令当成使用步骤。
-2. 用邮箱注册，等待管理员把账号改为已通过审核。
-3. 登录后上传简历、确认解析结果，再开始模拟面试。模型调用走服务端已配置的 DeepSeek，账号和限额走已配置的 Supabase。
-4. 不要上传你无权使用的简历；联系方式会在发给模型前脱敏，但仍应尽量去掉不必要的个人信息。
+1. 打开作者提供的 Web 地址。
+2. 用邮箱注册，审核通过后登录。
+3. 上传简历（可用仓库中的虚构示例 `examples/sample-resume.pdf`），确认解析结果。
+4. 选择正式模拟或专项训练，填写目标岗位后开始面试。
 
-下面从「当前功能」到文末，主要写给要改代码、本地运行或复制部署的开发者。
+请不要上传真实个人信息。模型 Key 只存在于服务端环境变量，不会出现在前端。
 
 ## 当前功能
 
@@ -35,49 +33,28 @@
 - Supabase Auth、PostgreSQL RLS 和私有 Storage（账号与云数据基础框架）
 - iOS Speech framework / Android SpeechRecognizer
 
-## 作品集打包（面试演示）
-
-把不含密钥和依赖的源码打成压缩包，方便拷贝到 U 盘或发给面试官：
-
-```bash
-./scripts/package-portfolio.sh
-```
-
-产物在 `build/portfolio/AI-Interviewer-portfolio.zip`。解压后阅读 `docs/DEMO.md`。
-
-若本机已安装 Docker，可在项目根目录一键启动 Web + API：
-
-```bash
-export DEEPSEEK_API_KEY=你自己的Key
-docker compose up --build
-```
-
-然后打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)，使用虚构简历 `examples/sample-resume.pdf` 走完解析、面试和报告。讲解提纲见 [docs/PORTFOLIO.md](docs/PORTFOLIO.md)。
-
-也可在 GitHub Actions 中手动运行工作流「打包作品集压缩包」，从 Artifact 下载同一份 ZIP。
-
 ## 目录结构
 
 ```text
 AI面试官/
-├── src/                    # 移动端页面、组件、状态和 API gateway
+├── src/                    # 页面、组件、状态和 API gateway
 ├── backend/                # FastAPI、LangGraph Agent、Skills、LLM 与测试
-├── docs/                   # 作品集说明与现场演示步骤
+├── docs/                   # 设计说明与本地快速跑通
 ├── examples/               # 虚构演示简历（非真实个人信息）
 ├── .agents/skills/         # 简历解析与动态面试工作流
 ├── supabase/migrations/    # 数据表、RLS 与私有文件策略
 ├── assets/                 # App 图标和静态资源
-├── docker-compose.yml      # 作品集一体包：Web 静态资源 + FastAPI
+├── docker-compose.yml      # 本地一体包：Web 静态资源 + FastAPI
 ├── app.json                # Expo 与原生权限配置
 ├── .env.example            # 客户端后端地址示例
 └── backend/.env.example    # 后端模型配置示例
 ```
 
-## 复制部署一套 Web（开发者）
+设计取舍见 [docs/DESIGN.md](docs/DESIGN.md)。本机跑通主路径见 [docs/DEMO.md](docs/DEMO.md)。
 
-已有内测环境的使用者跳过本节。这里只适用于你要**自己再部署一份**，而不是使用维护者已经配好的服务。
+## 自行部署（可选）
 
-仓库根目录的 `render.yaml` 会创建两个 Render 服务：
+已有线上环境时不必再走 Render。`render.yaml` 会创建两个服务：
 
 - `ai-interviewer-api-harlguo`：免费 FastAPI + LangGraph 后端。
 - `ai-interviewer-web-harlguo`：免费 Expo Web 静态站点。

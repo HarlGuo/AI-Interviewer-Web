@@ -1,25 +1,21 @@
-# 作品集现场演示
+# 本地快速跑通
 
-这份说明面向面试官或需要 10 分钟内在**本机**跑起来的评审。完整产品说明见 [PORTFOLIO.md](./PORTFOLIO.md)。
+已部署的 Web 体验见仓库根目录 README 的「在线体验」。下面只适用于要在本机启动源码的情况。
 
-若使用已经部署的 Web 内测，打开维护者提供的网址，用邮箱登录即可，**不要**在页面里填写 DeepSeek 或 Supabase。下面的 Docker / 本地命令只给没有线上环境、要在笔记本上演示的人。
-
-## 最快路径：Docker 一体包
-
-电脑已安装 Docker 时，在解压后的项目根目录执行：
+## Docker
 
 ```bash
-export DEEPSEEK_API_KEY=你自己的Key
+export DEEPSEEK_API_KEY=你的Key
 docker compose up --build
 ```
 
 浏览器打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)。
 
-- 默认 `AUTH_MODE=development`，无需注册，适合现场演示。
-- 前端静态资源和 FastAPI 由同一个容器提供，客户端会使用当前页面源站作为 API 地址。
-- 演示简历使用仓库内的虚构文件 `examples/sample-resume.pdf`，不要上传真实个人信息。
+- 默认 `AUTH_MODE=development`，无需注册。
+- 前端静态资源和 FastAPI 由同一个容器提供。
+- 可用虚构简历 `examples/sample-resume.pdf`，不要上传真实个人信息。
 
-## 没有 Docker：本地两个终端
+## 不用 Docker
 
 1. 复制 `backend/.env.example` 为 `backend/.env`，只填写 `DEEPSEEK_API_KEY`，保持 `AUTH_MODE=development`。
 2. 终端 1：
@@ -40,17 +36,4 @@ npm install
 npm run web
 ```
 
-## 建议演示顺序（约 6 分钟）
-
-1. 打开首页，说明这是面向校招/初入职场的模拟面试练习产品。
-2. 进入「你的简历」，上传 `examples/sample-resume.pdf`，解析并确认。
-3. 选择「正式模拟面试」，目标岗位填写「后端开发工程师」。
-4. 用文字回答 1–2 题，展示主问题后的追问，而不是一次性抛出题库。
-5. 结束或完成一轮后打开报告页，指出六维评分来自用户回答证据，而不是空泛评语。
-6. 如有时间，打开 `backend/app/agents/interviewer/`，说明 Agent 编排与 Skill 边界。
-
-## 不要在面试现场做的事
-
-- 不要粘贴真实 DeepSeek / Supabase 密钥到聊天窗口或共享屏幕的文本文件里。
-- 不要上传自己或他人的真实简历。
-- 不要把 Web 浏览器语音能力当成 App 真机验收结果。
+建议路径：首页 → 上传示例简历并确认 → 正式模拟（岗位可填后端开发工程师）→ 文字回答一两题 → 查看报告。

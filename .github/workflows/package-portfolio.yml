@@ -1,4 +1,4 @@
-name: 打包作品集压缩包
+name: 打包源码归档
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   package:
-    name: 生成源码作品集 ZIP
+    name: 生成源码 ZIP
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,6 +23,6 @@ jobs:
       - name: 上传压缩包
         uses: actions/upload-artifact@v4
         with:
-          name: AI-Interviewer-portfolio
+          name: AI-Interviewer-source
           path: build/portfolio/AI-Interviewer-portfolio.zip
           if-no-files-found: error
