@@ -6,7 +6,7 @@
 
 ## 在线体验
 
-1. 打开作者提供的 Web 地址。
+1. 打开[作者提供](https://ai-interviewer-web-d3c7u5b38cfb5-1486840156.ap-shanghai.app.tcloudbase.com/)的 Web 地址。
 2. 用邮箱注册，审核通过后登录。
 3. 上传简历（可用仓库中的虚构示例 `examples/sample-resume.pdf`），确认解析结果。
 4. 选择正式模拟或专项训练，填写目标岗位后开始面试。
