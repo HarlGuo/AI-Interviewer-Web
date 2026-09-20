@@ -6,6 +6,7 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, Vi
 import { Button, Card, Screen } from '@/components/ui';
 import { InterviewFeedbackModal } from '@/components/interview-feedback-modal';
 import { FeedbackSubmission } from '@/domain/models';
+import { createUuid } from '@/services/ids';
 import { ApiNotConfiguredError, interviewGateway } from '@/services/gateways';
 import { confirmAction, showMessage } from '@/services/dialogs';
 import { track } from '@/services/telemetry';
@@ -15,7 +16,7 @@ import { useApp } from '@/state/app-context';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 export default function InterviewScreen() {
-  const { state, hydrated, activateSession, updateAnswerDraft, applyInterviewTurn, setSessionStatus, clearSession } = useApp();
+  const { state, hydrated, activateSession, ensureInterviewId, updateAnswerDraft, applyInterviewTurn, setSessionStatus, clearSession } = useApp();
   const session = state.activeSession;
   const [answer, setAnswer] = useState(session?.answerDraft ?? ''); const [starting, setStarting] = useState(false); const [submitting, setSubmitting] = useState(false); const [recognizing, setRecognizing] = useState(false); const [speechStatus, setSpeechStatus] = useState(''); const startLock = useRef(false);
   const [feedbackType, setFeedbackType] = useState<'completed' | 'ended_early' | null>(null); const [feedbackSubmitting, setFeedbackSubmitting] = useState(false); const [feedbackError, setFeedbackError] = useState(''); const [finishWithoutReport, setFinishWithoutReport] = useState(false);
@@ -150,11 +151,13 @@ export default function InterviewScreen() {
 
   const startInterview = async () => {
     if (startLock.current) return; startLock.current = true; setStarting(true);
-    const startedAt = Date.now(); track('interview_start_requested', { mode: session.mode, focus: session.focus }, session.interviewId);
+    const interviewId = session.interviewId || createUuid();
+    if (!session.interviewId) await ensureInterviewId(interviewId);
+    const startedAt = Date.now(); track('interview_start_requested', { mode: session.mode, focus: session.focus }, interviewId);
     try {
       if (!state.resume || state.resume.reviewStatus !== 'ai_verified' || state.resume.status !== 'confirmed') throw new Error('请先完成简历解析、AI 复核和用户确认。');
-      const result = await interviewGateway.start(session, state.resume); await activateSession(result.interview_id, result.question, result.total_main_questions); track('interview_started', { question_source: result.source, mode: session.mode, latency_ms: Date.now() - startedAt }, result.interview_id);
-    } catch (error) { track('interview_start_failed', { error_code: error instanceof ApiNotConfiguredError ? 'not_configured' : 'request_failed', latency_ms: Date.now() - startedAt }, session.interviewId); showMessage(error instanceof ApiNotConfiguredError ? '后端地址尚未配置' : '面试启动失败', error instanceof Error ? error.message : '请确认后端已经启动。'); }
+      const result = await interviewGateway.start({ ...session, interviewId }, state.resume); await activateSession(result.interview_id, result.question, result.total_main_questions); track('interview_started', { question_source: result.source, mode: session.mode, latency_ms: Date.now() - startedAt }, result.interview_id);
+    } catch (error) { track('interview_start_failed', { error_code: error instanceof ApiNotConfiguredError ? 'not_configured' : 'request_failed', latency_ms: Date.now() - startedAt }, interviewId); showMessage(error instanceof ApiNotConfiguredError ? '后端地址尚未配置' : '面试启动失败', error instanceof Error ? error.message : '请确认后端已经启动。'); }
     finally { startLock.current = false; setStarting(false); }
   };
 
@@ -218,7 +221,7 @@ export default function InterviewScreen() {
     <View style={styles.top}><View><Text style={styles.mode}>{session.mode === 'formal' ? '正式模拟' : '单项训练'}</Text><Text style={styles.role}>{session.target.title}</Text></View><View style={styles.controls}><Pressable onPress={pause}><Text style={styles.control}>{paused ? '继续' : '暂停'}</Text></Pressable><Pressable onPress={endEarly}><Text style={[styles.control, styles.end]}>结束</Text></Pressable></View></View>
     {question ? <View style={styles.progress}><View style={[styles.progressFill, { width: `${Math.min(100, ((question.main_question_index + 1) / Math.max(1, session.totalMainQuestions)) * 100)}%` }]} /></View> : null}
     {paused ? <Card tone="warning"><Text style={styles.pausedTitle}>面试已暂停</Text><Text style={styles.helper}>录音和流程已停止。点击右上角“继续”回到当前问题。</Text></Card> : <>
-      <Card><Text style={styles.questionLabel}>{question ? `${question.stage} · 主问题 ${question.main_question_index + 1}/${session.totalMainQuestions}${question.is_follow_up ? ` · 追问 ${question.follow_up_count}/2` : ''}` : '准备开始'}</Text><Text style={styles.question}>{question ? cleanUserFacingText(question.text) : '将根据已确认简历和目标岗位生成第一道问题。'}</Text>{question?.resume_evidence && cleanUserFacingText(question.resume_evidence) ? <View style={styles.evidenceBox}><Text style={styles.evidence}>相关经历：{cleanUserFacingText(question.resume_evidence)}</Text></View> : null}{!question ? <Button label={starting ? '正在生成个性化问题…' : '开始面试'} disabled={starting} onPress={startInterview} /> : null}{starting ? <View style={styles.generating}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>通常需要数秒，请勿重复点击</Text></View> : null}</Card>
+      <Card><Text style={styles.questionLabel}>{question ? `${question.stage} · 主问题 ${question.main_question_index + 1}/${session.totalMainQuestions}${question.is_follow_up ? ` · 追问 ${question.follow_up_count}/2` : ''}` : '准备开始'}</Text><Text style={styles.question}>{question ? cleanUserFacingText(question.text) : '将根据已确认简历和目标岗位生成第一道问题。'}</Text>{question?.resume_evidence && cleanUserFacingText(question.resume_evidence) ? <View style={styles.evidenceBox}><Text style={styles.evidence}>相关经历：{cleanUserFacingText(question.resume_evidence)}</Text></View> : null}{!question ? <Button label={starting ? '正在启动面试…' : '开始面试'} disabled={starting} onPress={startInterview} /> : null}{starting ? <View style={styles.generating}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>第一题为固定开场，请保持此页；网络超时后可再次点击，不会重复占用今日次数。</Text></View> : null}</Card>
       <Card><Text style={styles.answerTitle}>你的回答</Text><Text style={styles.helper}>以语音回答为主。点击结束后会自动提交；文字仅用于实时查看、修正或备用输入。</Text>
         <Button label={recognizing ? '结束回答并自动提交' : answer ? '继续语音回答' : '开始语音回答'} disabled={submitting} variant={recognizing ? 'primary' : 'secondary'} onPress={toggleSpeechRecognition} />
         {speechStatus ? <Text style={styles.saved}>{speechStatus}</Text> : null}

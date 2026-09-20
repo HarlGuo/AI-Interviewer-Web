@@ -48,4 +48,4 @@ DeepSeek Chat Completions（可替换的 LLM 适配器）
 | LLM | `backend/app/llm/deepseek.py` | 供应商适配；换模型不应改业务流程 |
 | 数据 | `supabase/migrations/` | 账号、RLS、私有简历桶、用量与埋点 |
 
-线上把 Web 静态资源和 API 打进同一套托管（容器或 FunctionGraph），体验者只访问一个网址。本地默认 `AUTH_MODE=development` 可跳过登录，专门用来调试流程；云端模式才启用审核和日限额。
+线上把 Web 静态资源和 API 打进同一个腾讯云 CloudBase Run 容器，体验者只访问一个网址。本地默认 `AUTH_MODE=development` 可跳过登录，专门用来调试流程；云端模式才启用审核和日限额。

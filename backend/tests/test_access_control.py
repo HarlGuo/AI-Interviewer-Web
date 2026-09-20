@@ -34,3 +34,14 @@ async def test_pending_account_returns_403(monkeypatch):
     with pytest.raises(HTTPException) as caught:
         await access_control.reserve_daily_interview(USER)
     assert caught.value.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_reserve_reuses_client_interview_id(monkeypatch):
+    monkeypatch.setattr(access_control, "settings", SimpleNamespace(auth_mode="supabase"))
+    rpc = AsyncMock(return_value={"allowed": True, "reason": "reserved"})
+    monkeypatch.setattr(access_control, "_rpc", rpc)
+    reservation_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    assert await access_control.reserve_daily_interview(USER, reservation_id) == reservation_id
+    assert rpc.await_args.args[1] == "reserve_daily_interview"
+    assert rpc.await_args.args[2] == {"p_reservation_id": reservation_id}

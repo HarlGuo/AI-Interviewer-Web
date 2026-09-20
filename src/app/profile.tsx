@@ -10,7 +10,7 @@ import { colors, spacing, typography } from '@/theme/tokens';
 export default function ProfileScreen() {
   const { state } = useApp();
   const { cloudEnabled, user, signOut } = useAuth();
-  const openReport = () => state.report && state.activeSession ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
+  const openReport = () => state.report ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
 
   return <View style={styles.page}>
     <Screen>

@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BottomNav, Button, Card, Screen } from '@/components/ui';
 import { TrainingFocus } from '@/domain/models';
 import { showMessage } from '@/services/dialogs';
 import { track } from '@/services/telemetry';
 import { useApp } from '@/state/app-context';
+import { isQuotaUsedToday, isResumableSession } from '@/state/session-recovery';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 const practices: { focus: TrainingFocus; icon: string; title: string; text: string; color: string; tint: string }[] = [
@@ -16,15 +18,22 @@ const practices: { focus: TrainingFocus; icon: string; title: string; text: stri
 ];
 
 export default function InterviewHubScreen() {
-  const { state } = useApp();
+  const { hydrated, state } = useApp();
+  const resumable = isResumableSession(state.activeSession);
+  useEffect(() => {
+    if (hydrated && resumable) router.replace('/interview');
+  }, [hydrated, resumable, state.activeSession?.id]);
   const resumeReady = state.resume?.status === 'confirmed' && state.resume.reviewStatus === 'ai_verified';
+  const quotaUsed = isQuotaUsedToday(state);
   const openSetup = (focus: TrainingFocus | null) => {
+    if (quotaUsed) return showMessage('今日面试次数已用完', '每个账号每天只能完成一次模拟面试，请明天再来。');
     track('interview_mode_selected', { mode: focus ? 'focused' : 'formal', focus, resume_ready: resumeReady });
     if (!resumeReady) return router.push({ pathname: '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
     router.push({ pathname: '/setup', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };
-  const openReport = () => state.report && state.activeSession ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
+  const openReport = () => state.report ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
 
+  if (!hydrated || resumable) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.restoring}>正在恢复上次面试…</Text></View>;
   return <View style={styles.page}><Screen>
     <Text style={styles.title}>模拟面试</Text>
     {!resumeReady ? <Card tone="warning"><View style={styles.resumeRow}><View style={styles.flex}><Text style={styles.warningTitle}>⚠️ 尚未上传并确认简历</Text><Text style={styles.warningText}>完成解析和确认后，AI 才能根据你的真实经历提问</Text></View><Button label="上传" compact onPress={() => router.push('/resume')} /></View></Card> : <Card tone="success"><Text style={styles.ready}>✓ 已使用确认简历：{state.resume?.name}</Text></Card>}
@@ -33,7 +42,7 @@ export default function InterviewHubScreen() {
       <View style={styles.formalTop}><Text style={styles.recommend}>推荐</Text><Text style={styles.target}>🎯</Text></View>
       <Text style={styles.formalTitle}>正式模拟面试</Text><Text style={styles.formalBody}>完整还原真实面试流程，覆盖全部环节</Text>
       <View style={styles.tags}>{['自我介绍', '简历深挖', '行为面试', '专业题', 'AI 追问'].map((tag) => <Text key={tag} style={styles.tag}>{tag}</Text>)}</View>
-      <Pressable accessibilityRole="button" onPress={() => openSetup(null)} style={styles.formalButton}><Text style={styles.formalButtonText}>开始正式模拟 →</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => openSetup(null)} style={styles.formalButton}><Text style={styles.formalButtonText}>{quotaUsed ? '今日面试次数已用完' : '开始正式模拟 →'}</Text></Pressable>
     </View>
 
     <Text style={styles.sectionTitle}>单项专项训练</Text>
@@ -44,7 +53,7 @@ export default function InterviewHubScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.background }, title: { ...typography.title, color: colors.primary, marginTop: spacing.xl }, resumeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, flex: { flex: 1 }, warningTitle: { color: colors.warningText, fontWeight: '800', fontSize: 16 }, warningText: { color: colors.warningText, fontSize: 12, lineHeight: 18, marginTop: 4 }, ready: { color: colors.success, fontWeight: '700' },
+  page: { flex: 1, backgroundColor: colors.background }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }, restoring: { color: colors.muted, marginTop: 10 }, title: { ...typography.title, color: colors.primary, marginTop: spacing.xl }, resumeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, flex: { flex: 1 }, warningTitle: { color: colors.warningText, fontWeight: '800', fontSize: 16 }, warningText: { color: colors.warningText, fontSize: 12, lineHeight: 18, marginTop: 4 }, ready: { color: colors.success, fontWeight: '700' },
   formalCard: { backgroundColor: colors.primary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md }, formalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, recommend: { color: '#fff', backgroundColor: 'rgba(255,255,255,.2)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5, fontWeight: '800' }, target: { fontSize: 34 }, formalTitle: { color: '#fff', fontSize: 27, fontWeight: '900' }, formalBody: { color: '#DCE7FF', fontSize: 15 }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, tag: { color: '#fff', backgroundColor: 'rgba(255,255,255,.18)', borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 5, fontSize: 12 }, formalButton: { minHeight: 56, borderRadius: radius.md, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginTop: 4 }, formalButtonText: { color: colors.primary, fontSize: 17, fontWeight: '900' },
   sectionTitle: { ...typography.heading, color: colors.ink }, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, practice: { width: '48.5%', minHeight: 145, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, justifyContent: 'center' }, practiceIcon: { fontSize: 29 }, practiceTitle: { fontSize: 18, fontWeight: '900', marginTop: 9 }, practiceText: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 5 }, tipTitle: { color: colors.ink, fontWeight: '800', fontSize: 17, marginBottom: 7 }, tip: { color: colors.muted, fontSize: 13, lineHeight: 22 },
 });

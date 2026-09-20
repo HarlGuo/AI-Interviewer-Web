@@ -20,6 +20,7 @@ from .llm.deepseek import LLMNotConfiguredError
 from .resume_parser import parse_pdf
 from .schemas import AnalyticsEventRequest, FeedbackRequest, InterviewAgentStartRequest, InterviewReport, InterviewStartResponse, InterviewStatusRequest, InterviewTurnRequest, InterviewTurnResponse, ReportRequest, ResumeParseResponse
 from .supabase_store import (
+    load_interview_start,
     record_feedback,
     record_interview_draft,
     record_interview_start,
@@ -63,9 +64,17 @@ async def parse_resume(file: UploadFile = File(...), _user: CurrentUser = Depend
 
 @app.post("/v1/interviews", response_model=InterviewStartResponse)
 async def create_interview(config: InterviewAgentStartRequest, _user: CurrentUser = Depends(get_current_user)) -> InterviewStartResponse:
-    reservation_id = await reserve_daily_interview(_user)
-    interview_id = str(uuid4())
+    interview_id = str(config.interview_id or uuid4())
+    reservation_id = await reserve_daily_interview(_user, interview_id)
+    existing = await load_interview_start(_user.id, interview_id)
+    if existing:
+        await commit_daily_interview(_user, reservation_id)
+        return existing
     draft_stored = await record_interview_draft(_user.id, interview_id, config)
+    existing = await load_interview_start(_user.id, interview_id)
+    if existing:
+        await commit_daily_interview(_user, reservation_id)
+        return existing
     if settings.analytics_enabled and not draft_stored:
         await release_daily_interview(_user, reservation_id)
         raise HTTPException(status_code=503, detail="面试记录暂时无法创建，请稍后重试")
@@ -73,6 +82,11 @@ async def create_interview(config: InterviewAgentStartRequest, _user: CurrentUse
     try:
         result = await interviewer_agent.start(config, interview_id=interview_id)
         saved = await record_interview_start(_user.id, config, result)
+        if not saved:
+            existing = await load_interview_start(_user.id, interview_id)
+            if existing:
+                await commit_daily_interview(_user, reservation_id)
+                return existing
         if settings.analytics_enabled and not saved:
             await release_daily_interview(_user, reservation_id)
             await update_interview_status(_user.id, interview_id, "failed")
@@ -158,8 +172,8 @@ async def ingest_analytics_event(request: AnalyticsEventRequest, _user: CurrentU
     return {"accepted": True}
 
 
-# FunctionGraph can serve the exported Expo Web client and API from one HTTP
-# function. Local development keeps using the separate Expo dev server because
+# CloudBase Run serves the exported Expo Web client and API from one container.
+# Local development keeps using the separate Expo dev server because
 # this directory only exists in production packages.
 frontend_dist = Path(__file__).resolve().parents[2] / "dist"
 if frontend_dist.is_dir():
