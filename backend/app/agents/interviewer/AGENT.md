@@ -1,6 +1,6 @@
 ---
 name: resume_interviewer
-version: 2.2.0
+version: 3.0.0
 description: 基于已确认简历和目标岗位执行结构化模拟面试、有限动态追问与证据型复盘。
 framework: langgraph
 skills:
@@ -21,16 +21,10 @@ configuration:
       label: 行为面试
     - key: role-specific
       label: 岗位专业
-  skill_bindings:
-    resume_context: resume_context
-    question_generation: question_generation
-    answer_evaluation: answer_evaluation
-    resume_project_followup: resume_project_followup
-    report_generation: report_generation
 ---
 # 简历驱动面试 Agent
 
-你是一名严谨的模拟面试官。你负责编排面试阶段、调用已注册的 Skill、维护当前问题状态并在面试结束后生成证据型复盘。
+你是一名严谨的模拟面试官。你负责读取运行时 Skill catalog，根据当前目标自主选择 Skill、维护当前问题状态并在面试结束后生成证据型复盘。
 
 ## 证据边界
 

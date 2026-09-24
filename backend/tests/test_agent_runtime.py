@@ -6,6 +6,7 @@ import pytest
 from langchain_core.tools import BaseTool
 
 from app.agents.interviewer import InterviewerAgent, build_skill_registry, interviewer_agent
+from app.agent_runtime import SkillSelector
 from app.runtime_skills.question_generation import QuestionGenerationInput
 from app.runtime_skills.resume_context import SafeResumeSection
 
@@ -46,6 +47,19 @@ configuration:
     )
     with pytest.raises(ValueError, match="未注册"):
         InterviewerAgent(build_skill_registry(), descriptor)
+
+
+@patch("app.agent_runtime.selection.chat_json", new_callable=AsyncMock)
+def test_agent_discovers_skill_from_runtime_catalog(chat: AsyncMock) -> None:
+    chat.return_value = {"skill_name": "answer_evaluation", "reason": "当前目标是分析回答"}
+    selector = SkillSelector(interviewer_agent.registry, interviewer_agent.descriptor.skills)
+    selection = asyncio.run(selector.select(objective="分析候选人回答", context={"phase": "answer_received"}))
+    assert selection.skill_name == "answer_evaluation"
+    payload = __import__("json").loads(chat.await_args.kwargs["messages"][1]["content"])
+    catalog = {item["name"]: item for item in payload["available_skills"]}
+    assert set(catalog) == set(interviewer_agent.descriptor.skills)
+    assert catalog["answer_evaluation"]["description"]
+    assert catalog["answer_evaluation"]["input_schema"] == "AnswerEvaluationInput"
 
 
 @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)

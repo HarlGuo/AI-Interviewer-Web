@@ -1,4 +1,5 @@
 import unittest
+import json
 from unittest.mock import AsyncMock, patch
 
 from app.agents.interviewer import interviewer_agent
@@ -58,6 +59,30 @@ def project_turn_request(*, follow_up_count: int = 0, answer: str = "我负责�
 
 
 class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.selector_patcher = patch("app.agent_runtime.selection.chat_json", new_callable=AsyncMock)
+        self.selector_chat = self.selector_patcher.start()
+
+        async def select_skill(**kwargs):
+            payload = json.loads(kwargs["messages"][1]["content"])
+            objective = payload["objective"]
+            if "简历" in objective and "项目证据" not in objective:
+                name = "resume_context"
+            elif "项目证据" in objective:
+                name = "resume_project_followup"
+            elif "回答" in objective:
+                name = "answer_evaluation"
+            elif "报告" in objective:
+                name = "report_generation"
+            else:
+                name = "question_generation"
+            return {"skill_name": name, "reason": f"目标需要 {name}"}
+
+        self.selector_chat.side_effect = select_skill
+
+    async def asyncTearDown(self) -> None:
+        self.selector_patcher.stop()
+
     def test_stage_plans_are_deterministic(self) -> None:
         self.assertEqual(len(interviewer_agent.policy.stage_plan("formal", None)), 4)
         self.assertEqual(interviewer_agent.policy.stage_plan("focused", "behavioral"), ["behavioral"] * 3)
@@ -70,6 +95,7 @@ class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("产品经理", result.question.text)
         self.assertIn("自我介绍", result.question.text)
         generate.assert_not_awaited()
+        self.assertEqual(self.selector_chat.await_count, 2)
 
     @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
     async def test_resume_deep_dive_question_creates_project_context(self, generate: AsyncMock) -> None:

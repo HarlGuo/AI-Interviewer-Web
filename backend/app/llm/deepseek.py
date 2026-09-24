@@ -22,6 +22,7 @@ PURPOSE_OPERATIONS = {
     "answer_evaluation": "answer_analysis",
     "answer_analysis": "answer_analysis",
     "resume_project_followup": "answer_analysis",
+    "skill_selection": "skill_selection",
     "report": "report_generation",
     "report_generation": "report_generation",
 }
@@ -35,6 +36,7 @@ PURPOSE_READ_TIMEOUTS = {
     "answer_evaluation": 22,
     "answer_analysis": 22,
     "resume_project_followup": 22,
+    "skill_selection": 5,
     "resume review": 45,
     "resume_review": 45,
     "report": 50,

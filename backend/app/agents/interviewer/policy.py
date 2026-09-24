@@ -23,16 +23,12 @@ class InterviewerConfiguration(BaseModel):
     max_follow_ups: int = Field(ge=0, le=2)
     focused_main_questions: int = Field(ge=1, le=10)
     formal_stages: list[StageDefinition] = Field(min_length=1)
-    skill_bindings: dict[str, str]
 
     @model_validator(mode="after")
     def validate_configuration(self) -> "InterviewerConfiguration":
         keys = [stage.key for stage in self.formal_stages]
         if len(keys) != len(set(keys)):
             raise ValueError("Agent 阶段 key 不能重复")
-        required = {"resume_context", "question_generation", "answer_evaluation", "resume_project_followup", "report_generation"}
-        if set(self.skill_bindings) != required:
-            raise ValueError("Agent skill_bindings 不完整")
         return self
 
 
@@ -46,9 +42,6 @@ class InterviewerPolicy:
     @property
     def max_follow_ups(self) -> int:
         return self.configuration.max_follow_ups
-
-    def skill(self, capability: str) -> str:
-        return self.configuration.skill_bindings[capability]
 
     def stage_plan(self, mode: str, focus: str | None) -> list[str]:
         if mode == "focused":
@@ -110,14 +103,11 @@ class InterviewerPolicy:
 
     def validate_registered_skills(self, registered_names: set[str], descriptor_skills: list[str]) -> None:
         declared = set(descriptor_skills)
-        bound = set(self.configuration.skill_bindings.values())
-        if bound - declared:
-            raise ValueError(f"Agent 绑定了未声明的 Skill：{sorted(bound - declared)}")
         if declared - registered_names:
             raise ValueError(f"Agent 声明的 Skill 未注册：{sorted(declared - registered_names)}")
 
 
-def append_trace(current: list[dict[str, Any]] | None, *, descriptor: Any) -> list[dict[str, Any]]:
+def append_trace(current: list[dict[str, Any]] | None, *, descriptor: Any, selection_reason: str = "") -> list[dict[str, Any]]:
     return [
         *(current or []),
         {
@@ -125,5 +115,6 @@ def append_trace(current: list[dict[str, Any]] | None, *, descriptor: Any) -> li
             "version": descriptor.version,
             "input_contract": descriptor.input_schema,
             "output_contract": descriptor.output_schema,
+            "selection_reason": selection_reason,
         },
     ]

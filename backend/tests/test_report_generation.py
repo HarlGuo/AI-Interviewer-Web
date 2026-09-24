@@ -7,6 +7,14 @@ from app.schemas import AnswerEvidence, ReportRequest, SpeechDeliveryMetrics
 
 
 class ReportGenerationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.selector_patcher = patch("app.agent_runtime.selection.chat_json", new_callable=AsyncMock)
+        self.selector_chat = self.selector_patcher.start()
+        self.selector_chat.return_value = {"skill_name": "report_generation", "reason": "需要生成证据型报告"}
+
+    async def asyncTearDown(self) -> None:
+        self.selector_patcher.stop()
+
     @patch("app.deepseek.settings")
     @patch("app.runtime_skills.report_generation.skill.chat_json", new_callable=AsyncMock)
     async def test_unverifiable_evidence_is_safely_downgraded(self, chat: AsyncMock, settings: object) -> None:

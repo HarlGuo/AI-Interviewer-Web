@@ -21,6 +21,7 @@ class SkillTrace(TypedDict):
     version: str
     input_contract: str
     output_contract: str
+    selection_reason: str
 
 
 class StartState(TypedDict, total=False):

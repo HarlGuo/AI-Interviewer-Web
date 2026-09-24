@@ -43,8 +43,8 @@ DeepSeek Chat Completions（可替换的 LLM 适配器）
 |---|---|---|
 | 客户端 | `src/` | 页面、本地会话草稿、语音/文字输入、API gateway |
 | HTTP API | `backend/app/main.py` | 简历解析、面试回合、报告、健康检查；生产包同时托管 `dist/` |
-| Agent | `backend/app/agents/interviewer/` | 状态、阶段策略、图编排 |
-| Skills | `backend/app/runtime_skills/` | 可单独演进的生成与评价能力 |
+| Agent | `backend/app/agents/interviewer/` | 状态、阶段策略、运行时 Skill 选择与图编排 |
+| Skills | `backend/app/runtime_skills/` | 带描述和输入输出契约、可由 Agent 自主发现的执行能力 |
 | LLM | `backend/app/llm/deepseek.py` | 供应商适配；换模型不应改业务流程 |
 | 数据 | `supabase/migrations/` | 账号、RLS、私有简历桶、用量与埋点 |
 

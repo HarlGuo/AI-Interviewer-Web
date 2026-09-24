@@ -8,12 +8,12 @@ from uuid import uuid4
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 
-from ...agent_runtime import AgentDescriptor, SkillRegistry, load_agent_descriptor
+from ...agent_runtime import AgentDescriptor, SkillRegistry, SkillSelector, load_agent_descriptor
 from ...runtime_skills.answer_evaluation import AnswerDecision, AnswerEvaluationInput
-from ...runtime_skills.question_generation import PreviousAnswer, QuestionGenerationInput
+from ...runtime_skills.question_generation import GeneratedQuestion, PreviousAnswer, QuestionGenerationInput
 from ...runtime_skills.report_generation import ReportGenerationInput
-from ...runtime_skills.resume_context import ResumeContextInput
-from ...runtime_skills.resume_project_followup import ResumeProjectFollowUpInput
+from ...runtime_skills.resume_context import ResumeContextInput, ResumeContextOutput
+from ...runtime_skills.resume_project_followup import ResumeProjectFollowUpDecision, ResumeProjectFollowUpInput
 from ...schemas import (
     InterviewAgentStartRequest,
     InterviewQuestion,
@@ -35,6 +35,7 @@ class InterviewerAgent:
         self.descriptor: AgentDescriptor = load_agent_descriptor(descriptor_path or Path(__file__).with_name("AGENT.md"))
         self.registry = registry
         self.policy = InterviewerPolicy(self.descriptor)
+        self.selector = SkillSelector(registry, self.descriptor.skills)
         registered = {item.name for item in registry.catalog()}
         self.policy.validate_registered_skills(registered, self.descriptor.skills)
         self.start_graph = self._compile_start_graph()
@@ -46,17 +47,25 @@ class InterviewerAgent:
         """Typed LangChain tools exposed by the skills declared in AGENT.md."""
         return self.registry.tools(self.descriptor.skills)
 
+    async def _select_skill(self, *, objective: str, context: dict) -> tuple:
+        selection = await self.selector.select(objective=objective, context=context)
+        return self.registry.require(selection.skill_name), selection
+
     async def _prepare_start(self, state: StartState) -> dict:
         request = state["request"]
         return {"plan": self.policy.stage_plan(request.mode, request.focus), "skill_trace": []}
 
     async def _prepare_start_resume(self, state: StartState) -> dict:
-        name = self.policy.skill("resume_context")
-        skill = self.registry.require(name)
+        skill, selection = await self._select_skill(
+            objective="将用户已确认的简历转换为隐私安全、可用于面试的上下文",
+            context={"phase": "start", "has_confirmed_resume": True},
+        )
         result = await skill.invoke(ResumeContextInput(
             sections=state["request"].resume_sections,
         ))
-        return {"resume_context": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor)}
+        if not isinstance(result, ResumeContextOutput):
+            raise ValueError(f"Agent 为简历上下文选择了不适用的 Skill：{skill.descriptor.name}")
+        return {"resume_context": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor, selection_reason=selection.reason)}
 
     async def _generate_start_question(self, state: StartState) -> dict:
         request, stage = state["request"], state["plan"][0]
@@ -81,12 +90,16 @@ class InterviewerAgent:
         return {"plan": plan, "latest_answer": self.policy.validate_turn(request, plan), "skill_trace": []}
 
     async def _prepare_turn_resume(self, state: TurnState) -> dict:
-        name = self.policy.skill("resume_context")
-        skill = self.registry.require(name)
+        skill, selection = await self._select_skill(
+            objective="为当前面试轮次准备隐私安全的已确认简历上下文",
+            context={"phase": "turn", "has_confirmed_resume": True},
+        )
         result = await skill.invoke(ResumeContextInput(
             sections=state["request"].resume_sections,
         ))
-        return {"resume_context": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor)}
+        if not isinstance(result, ResumeContextOutput):
+            raise ValueError(f"Agent 为简历上下文选择了不适用的 Skill：{skill.descriptor.name}")
+        return {"resume_context": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor, selection_reason=selection.reason)}
 
     async def _evaluate_turn(self, state: TurnState) -> dict:
         request = state["request"]
@@ -97,8 +110,11 @@ class InterviewerAgent:
         decision = self.policy.deterministic_decision(request, state["latest_answer"])
         if decision is not None:
             return {"decision": decision}
-        name = self.policy.skill("answer_evaluation")
-        skill = self.registry.require(name)
+        skill, selection = await self._select_skill(
+            objective="判断候选人的最新回答是否充分，并决定追问或进入下一主问题",
+            context={"phase": "answer_received", "stage": stage, "has_project_context": False,
+                     "follow_up_count": current.follow_up_count},
+        )
         result = await skill.invoke(AnswerEvaluationInput(
             target_role=request.target_role,
             job_description=request.job_description,
@@ -108,7 +124,9 @@ class InterviewerAgent:
             previous_answers=request.answers[-11:-1],
             remaining_follow_ups=self.policy.max_follow_ups - request.current_question.follow_up_count,
         ))
-        return {"decision": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor)}
+        if not isinstance(result, AnswerDecision):
+            raise ValueError(f"Agent 为回答评估选择了不适用的 Skill：{skill.descriptor.name}")
+        return {"decision": result, "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor, selection_reason=selection.reason)}
 
     async def _evaluate_resume_project(self, state: TurnState) -> dict:
         request = state["request"]
@@ -121,8 +139,11 @@ class InterviewerAgent:
             return {"decision": fixed, "project_context": context}
         question_ids = set(context.question_ids)
         project_answers = [item for item in request.answers if item.question_id in question_ids]
-        name = self.policy.skill("resume_project_followup")
-        skill = self.registry.require(name)
+        skill, selection = await self._select_skill(
+            objective="围绕当前已绑定的简历项目证据判断覆盖情况并决定是否继续深挖",
+            context={"phase": "resume_project_followup", "stage": "resume-deep-dive",
+                     "follow_up_count": current.follow_up_count, "project_round_count": context.round_count},
+        )
         project_decision = await skill.invoke(ResumeProjectFollowUpInput(
             target_role=request.target_role,
             project_key=context.project_key,
@@ -134,6 +155,8 @@ class InterviewerAgent:
             project_round_count=context.round_count,
             consecutive_insufficient_count=context.consecutive_insufficient_count,
         ))
+        if not isinstance(project_decision, ResumeProjectFollowUpDecision):
+            raise ValueError(f"Agent 为项目深挖选择了不适用的 Skill：{skill.descriptor.name}")
         coverage_updates = {item.target: "covered" for item in project_decision.newly_covered_targets}
         coverage = context.coverage.model_copy(update=coverage_updates)
         insufficient_count = (
@@ -167,7 +190,7 @@ class InterviewerAgent:
         return {
             "decision": decision,
             "project_context": updated_context,
-            "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor),
+            "skill_trace": append_trace(state.get("skill_trace"), descriptor=skill.descriptor, selection_reason=selection.reason),
         }
 
     def _route_decision(self, state: TurnState) -> Literal["follow_up", "advance_main"]:
@@ -248,8 +271,11 @@ class InterviewerAgent:
     async def _invoke_question_skill(self, *, request: InterviewAgentStartRequest, stage: str, index: int,
                                      answers: list, resume_context, trace: list | None,
                                      excluded_resume_evidence: list[str] | None = None) -> tuple[InterviewQuestion, list]:
-        name = self.policy.skill("question_generation")
-        skill = self.registry.require(name)
+        skill, selection = await self._select_skill(
+            objective="为指定面试阶段生成一道个性化主问题",
+            context={"phase": "question_generation", "stage": stage, "main_question_index": index,
+                     "previous_answer_count": len(answers)},
+        )
         generated = await skill.invoke(QuestionGenerationInput(
             stage=stage,
             stage_label=self.policy.label(stage),
@@ -261,6 +287,8 @@ class InterviewerAgent:
             searchable_resume_text=resume_context.searchable_text,
             excluded_resume_evidence=excluded_resume_evidence or [],
         ))
+        if not isinstance(generated, GeneratedQuestion):
+            raise ValueError(f"Agent 为问题生成选择了不适用的 Skill：{skill.descriptor.name}")
         question_id = str(uuid4())
         visited_evidence = list(dict.fromkeys([*(excluded_resume_evidence or []), generated.resume_evidence]))
         project_context = None
@@ -281,13 +309,18 @@ class InterviewerAgent:
             resume_evidence=generated.resume_evidence,
             project_context=project_context,
         )
-        return question, append_trace(trace, descriptor=skill.descriptor)
+        return question, append_trace(trace, descriptor=skill.descriptor, selection_reason=selection.reason)
 
     async def _generate_report(self, state: ReportState) -> dict:
-        name = self.policy.skill("report_generation")
-        skill = self.registry.require(name)
+        skill, selection = await self._select_skill(
+            objective="根据已完成面试的真实回答生成证据型复盘报告",
+            context={"phase": "report", "completed": state["request"].completed,
+                     "answer_count": len(state["request"].answers)},
+        )
         report = await skill.invoke(ReportGenerationInput.model_validate(state["request"].model_dump()))
-        return {"report": report, "skill_trace": append_trace([], descriptor=skill.descriptor)}
+        if not isinstance(report, InterviewReport):
+            raise ValueError(f"Agent 为报告生成选择了不适用的 Skill：{skill.descriptor.name}")
+        return {"report": report, "skill_trace": append_trace([], descriptor=skill.descriptor, selection_reason=selection.reason)}
 
     def _compile_start_graph(self):
         graph = StateGraph(StartState)
