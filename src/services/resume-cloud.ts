@@ -4,6 +4,20 @@ import { supabase } from '@/services/supabase';
 const BUCKET = 'resumes';
 const SIGNED_URL_SECONDS = 60 * 60;
 
+export type ResumeUploadSource = {
+  webFile?: File;
+};
+
+function cloudErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error && typeof error === 'object') {
+    const candidate = error as { message?: unknown; error?: unknown };
+    if (typeof candidate.message === 'string' && candidate.message.trim()) return candidate.message;
+    if (typeof candidate.error === 'string' && candidate.error.trim()) return candidate.error;
+  }
+  return fallback;
+}
+
 type ResumeRow = {
   id: string;
   file_name: string;
@@ -64,7 +78,7 @@ export async function loadCloudResume(userId: string): Promise<ResumeFile | null
   return data ? rowToResume(data as ResumeRow) : null;
 }
 
-export async function saveCloudResume(userId: string, resume: ResumeFile): Promise<ResumeFile> {
+export async function saveCloudResume(userId: string, resume: ResumeFile, source?: ResumeUploadSource): Promise<ResumeFile> {
   if (!supabase) return resume;
   const { data: existing, error: existingError } = await supabase
     .from('resumes')
@@ -79,14 +93,19 @@ export async function saveCloudResume(userId: string, resume: ResumeFile): Promi
   const replacingFile = !resume.objectPath;
   const objectPath = existing?.object_path ?? `${userId}/current.pdf`;
   if (replacingFile) {
-    const response = await fetch(resume.uri);
-    if (!response.ok) throw new Error('无法读取所选 PDF，请重新选择。');
-    const bytes = await response.arrayBuffer();
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(objectPath, bytes, {
+    let uploadBody: File | ArrayBuffer;
+    if (source?.webFile) {
+      uploadBody = source.webFile;
+    } else {
+      const response = await fetch(resume.uri);
+      if (!response.ok) throw new Error('无法读取所选 PDF，请重新选择。');
+      uploadBody = await response.arrayBuffer();
+    }
+    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(objectPath, uploadBody, {
       contentType: 'application/pdf',
       upsert: true,
     });
-    if (uploadError) throw uploadError;
+    if (uploadError) throw new Error(cloudErrorMessage(uploadError, 'PDF 上传到云端失败，请稍后重试。'));
   }
 
   const values = {
@@ -107,7 +126,7 @@ export async function saveCloudResume(userId: string, resume: ResumeFile): Promi
   const { data, error } = await query
     .select('id,file_name,object_path,file_size_bytes,status,review_status,sections,warnings,created_at')
     .single();
-  if (error) throw error;
+  if (error) throw new Error(cloudErrorMessage(error, '简历信息保存失败，请稍后重试。'));
   return rowToResume(data as ResumeRow);
 }
 

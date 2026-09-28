@@ -3,7 +3,7 @@ import { createContext, PropsWithChildren, useCallback, useContext, useEffect, u
 
 import { AnswerSource, AppState, InterviewMode, InterviewQuestion, InterviewReport, ResumeFile, SpeechDeliveryMetrics, TargetRole, TrainingFocus } from '@/domain/models';
 import { createUuid } from '@/services/ids';
-import { loadCloudResume, removeCloudResume, saveCloudResume } from '@/services/resume-cloud';
+import { loadCloudResume, removeCloudResume, ResumeUploadSource, saveCloudResume } from '@/services/resume-cloud';
 import { useAuth } from '@/state/auth-context';
 import { beijingDate, isResumableSession } from '@/state/session-recovery';
 
@@ -13,7 +13,7 @@ const initialState: AppState = { resume: null, target: null, activeSession: null
 
 type ContextValue = {
   state: AppState; hydrated: boolean;
-  saveResume: (resume: ResumeFile) => Promise<void>; removeResume: () => Promise<void>;
+  saveResume: (resume: ResumeFile, source?: ResumeUploadSource) => Promise<void>; removeResume: () => Promise<void>;
   saveTarget: (target: TargetRole) => Promise<void>;
   startDraftSession: (input: { mode: InterviewMode; focus: TrainingFocus | null; target: TargetRole; resumeId: string | null }) => Promise<void>;
   ensureInterviewId: (interviewId: string) => Promise<void>;
@@ -84,8 +84,8 @@ export function AppProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<ContextValue>(() => ({
     state, hydrated,
-    saveResume: async (resume) => {
-      const savedResume = cloudEnabled && user ? await saveCloudResume(user.id, resume) : resume;
+    saveResume: async (resume, source) => {
+      const savedResume = cloudEnabled && user ? await saveCloudResume(user.id, resume, source) : resume;
       await commit((current) => ({ ...current, resume: savedResume }));
     },
     removeResume: async () => {

@@ -20,17 +20,22 @@ export default function ResumeScreen() {
 
   const pickResume = async () => {
     if (!agreed && !state.resume) return setError('请先确认你已阅读简历使用说明。');
-    setError(''); track('resume_upload_started');
-    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: false, copyToCacheDirectory: true });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    if (!asset.name.toLowerCase().endsWith('.pdf') && asset.mimeType !== 'application/pdf') return setError('文件格式不支持，请重新选择 PDF。');
-    if (typeof asset.size === 'number' && asset.size > MAX_BYTES) return setError('文件超过 10 MB，请压缩后重新上传。');
     try {
-      await saveResume({ id: `${Date.now()}`, name: asset.name, uri: asset.uri, size: asset.size ?? null, status: 'uploaded', uploadedAt: new Date().toISOString(), sections: [], warnings: [], reviewStatus: 'pending' });
+      setError('');
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: false, copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset.name.toLowerCase().endsWith('.pdf') && asset.mimeType !== 'application/pdf') return setError('文件格式不支持，请重新选择 PDF。');
+      if (typeof asset.size === 'number' && asset.size > MAX_BYTES) return setError('文件超过 10 MB，请压缩后重新上传。');
+      track('resume_upload_started');
+      await saveResume(
+        { id: `${Date.now()}`, name: asset.name, uri: asset.uri, size: asset.size ?? null, status: 'uploaded', uploadedAt: new Date().toISOString(), sections: [], warnings: [], reviewStatus: 'pending' },
+        { webFile: asset.file },
+      );
       const size = asset.size ?? 0; track('resume_upload_succeeded', { size_bucket: size < 1024 * 1024 ? '<1MB' : size < 5 * 1024 * 1024 ? '1-5MB' : '5-10MB', replace_existing: Boolean(state.resume) });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '简历上传失败，请稍后重试。');
+      const message = cause instanceof Error ? cause.message : cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string' ? cause.message : '简历上传失败，请稍后重试。';
+      setError(message);
       track('resume_upload_failed');
     }
   };
