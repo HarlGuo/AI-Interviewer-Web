@@ -10,14 +10,13 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from httpx import HTTPError
 
-from .ai_resume_reviewer import review_resume
+from .agents.interview_graph import advance_interview, start_interview
+from .agents.resume_agent import parse_resume_with_agent
 from .auth import CurrentUser, get_current_user
 from .access_control import commit_daily_interview, release_daily_interview, require_approved, reserve_daily_interview
 from .config import settings
-from .agents.interviewer import interviewer_agent
-from .deepseek import DeepSeekNotConfiguredError
+from .deepseek import DeepSeekNotConfiguredError, generate_report
 from .llm.deepseek import LLMNotConfiguredError
-from .resume_parser import parse_pdf
 from .schemas import AnalyticsEventRequest, FeedbackRequest, InterviewAgentStartRequest, InterviewReport, InterviewStartResponse, InterviewStatusRequest, InterviewTurnRequest, InterviewTurnResponse, ReportRequest, ResumeParseResponse
 from .supabase_store import (
     load_interview_start,
@@ -31,6 +30,7 @@ from .supabase_store import (
     upsert_attribution,
 )
 from .telemetry_context import reset_telemetry_context, set_telemetry_context
+from .skills.runtime import RUNTIME_SKILLS
 
 app = FastAPI(title="AI Interviewer API", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins), allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "OPTIONS"], allow_headers=["*"])
@@ -38,8 +38,8 @@ app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
 
 @app.get("/health")
 async def health() -> dict[str, str | bool]:
-    skill_versions = ",".join(f"{item.name}:{item.version}" for item in interviewer_agent.registry.catalog())
-    return {"status": "ok", "deepseek_configured": bool(settings.deepseek_api_key), "model": settings.deepseek_model, "auth_mode": settings.auth_mode, "supabase_configured": settings.supabase_auth_enabled, "analytics_configured": settings.analytics_enabled, "app_version": settings.app_version, "agent_version": settings.agent_version, "agent_definition_version": interviewer_agent.descriptor.version, "runtime_skill_versions": skill_versions}
+    skill_versions = ",".join(f"{item['name']}:{settings.skill_version}" for item in RUNTIME_SKILLS.catalog())
+    return {"status": "ok", "deepseek_configured": bool(settings.deepseek_api_key), "model": settings.deepseek_model, "auth_mode": settings.auth_mode, "supabase_configured": settings.supabase_auth_enabled, "analytics_configured": settings.analytics_enabled, "app_version": settings.app_version, "agent_version": settings.agent_version, "runtime_skill_versions": skill_versions}
 
 
 @app.post("/v1/resumes/parse", response_model=ResumeParseResponse)
@@ -50,8 +50,7 @@ async def parse_resume(file: UploadFile = File(...), _user: CurrentUser = Depend
     data = await file.read(10 * 1024 * 1024 + 1)
     context_token = set_telemetry_context(user_id=_user.id)
     try:
-        parsed = parse_pdf(file.filename or "resume.pdf", data)
-        return await review_resume(parsed)
+        return await parse_resume_with_agent(file.filename or "resume.pdf", data)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except RuntimeError as error:
@@ -80,7 +79,7 @@ async def create_interview(config: InterviewAgentStartRequest, _user: CurrentUse
         raise HTTPException(status_code=503, detail="面试记录暂时无法创建，请稍后重试")
     context_token = set_telemetry_context(user_id=_user.id, interview_id=interview_id)
     try:
-        result = await interviewer_agent.start(config, interview_id=interview_id)
+        result = await start_interview(config, interview_id=interview_id)
         saved = await record_interview_start(_user.id, config, result)
         if not saved:
             existing = await load_interview_start(_user.id, interview_id)
@@ -114,7 +113,7 @@ async def interview_turn(request: InterviewTurnRequest, _user: CurrentUser = Dep
     await require_approved(_user)
     context_token = set_telemetry_context(user_id=_user.id, interview_id=request.interview_id)
     try:
-        result = await interviewer_agent.advance(request)
+        result = await advance_interview(request)
         await record_interview_turn(_user.id, request, result)
         return result
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:
@@ -133,7 +132,7 @@ async def create_report(request: ReportRequest, _user: CurrentUser = Depends(get
     interview_id = str(request.interview_id)
     context_token = set_telemetry_context(user_id=_user.id, interview_id=interview_id)
     try:
-        report = await interviewer_agent.report(request)
+        report = await generate_report(request)
         await record_report(_user.id, interview_id, report)
         return report
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:

@@ -17,6 +17,7 @@
 
 - PDF 简历选择、大小与格式检查
 - 确定性文本提取、联系方式脱敏、DeepSeek 分类复核和用户确认
+- Agent 先自主识别并激活产品 Skill，再在受限 Tool 白名单内反复规划与调用，直到本轮可交付
 - 正式模拟面试，以及自我介绍、简历深挖、行为面试、岗位专业题专项训练
 - 基于已确认简历与真实 JD 生成个性化问题
 - 每道主问题最多两次动态追问，达到上限后由程序强制推进
@@ -41,7 +42,7 @@ AI面试官/
 ├── backend/                # FastAPI、LangGraph Agent、Skills、LLM 与测试
 ├── docs/                   # 设计说明与本地快速跑通
 ├── examples/               # 虚构演示简历（非真实个人信息）
-├── .agents/skills/         # 简历解析与动态面试工作流
+├── backend/app/skills/     # 产品运行时 Skill 定义、约束与 Tool 白名单
 ├── supabase/migrations/    # 数据表、RLS 与私有文件策略
 ├── assets/                 # App 图标和静态资源
 ├── docker-compose.yml      # 本地一体包：Web 静态资源 + FastAPI
@@ -182,7 +183,7 @@ ALLOWED_ORIGINS=http://localhost:8081,http://localhost:19006
 
 API Key 只能写在 `backend/.env`。不要写入 `app.json`、`.env.local`、`src/`、截图、Issue 或 Git 提交。`backend/.env` 已在 `.gitignore` 中排除。
 
-当前后端按 DeepSeek Chat Completions 接口实现。模型 HTTP 调用统一位于 `backend/app/llm/deepseek.py`；Agent 角色和阶段定义位于 `backend/app/agents/interviewer/AGENT.md`；LangGraph 编排位于 `backend/app/agents/interviewer/`；可执行 Skill 位于 `backend/app/runtime_skills/`。运行时 Agent 会读取全部已注册 Skill 的名称、描述及输入输出契约，自主选择当前目标所需的 Skill，程序策略层负责阶段、追问上限和输出类型校验。更换模型供应商时应新增 LLM 适配器，而不是修改 Agent 流程。
+当前后端按 DeepSeek Chat Completions 接口实现。模型 HTTP 调用统一位于 `backend/app/llm/deepseek.py`；简历与面试 Agent loop 位于 `backend/app/agents/`；产品运行时 Skill、Tool 白名单、输入输出契约和验收标准位于 `backend/app/skills/`。每轮开始时，模型先从 Skill 目录自主选择并调用 `activate_skill`，再只使用该 Skill 允许的 Tools；每次读取工具结果后都会重新规划，直到认为本轮已可交付或达到安全轮次上限。LangGraph 承载可恢复的运行结构，程序仍强制阶段、追问次数、事实边界和输出类型。更换模型供应商时应新增 LLM 适配器，而不是修改 Agent 流程。
 
 ## 3. 首次安装本地后端
 

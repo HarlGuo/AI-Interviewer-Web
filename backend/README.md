@@ -31,13 +31,17 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 DeepSeek 用于已确认简历的结构复核、个性化面试问题、动态追问决策和证据型报告。阶段索引与每道主问题最多两次追问由后端代码强制控制。
 
-## LangGraph 目录
+## Agent、Skill 与 Tool 目录
 
-- `app/agents/`：LangGraph 状态、节点、条件边和工作流入口。
-- `app/skills/`：问题生成、回答判断、脱敏和确定性校验。
+- `app/agents/`：LangGraph 承载的简历和面试有限 Agent loop、运行状态及停止条件。
+- `app/skills/runtime.py`：产品运行时 Skill/Tool 注册表与 `activate_skill`。
+- `app/skills/resume.py`：可验证简历解析 Skill 及其 Tools。
+- `app/skills/interview.py`：动态面试 Skill 及其 Tools。
 - `app/prompts/`：独立提示词。
 - `app/llm/`：DeepSeek 等模型服务商适配器。
 - `app/schemas.py`：API 数据契约。
+
+每次 API 请求启动一个 Agent run。模型先从产品 Skill 目录调用 `activate_skill`，加载该 Skill 的 instructions 和 Tool 白名单，再调用 Tools、读取结果并继续规划。后端设置最大步骤数，并确定性控制隐私、阶段、追问上限和最终用户可见结果。
 
 运行测试：
 

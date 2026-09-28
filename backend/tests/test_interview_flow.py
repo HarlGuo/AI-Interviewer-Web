@@ -1,12 +1,12 @@
-import unittest
 import json
+import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.agents.interviewer import interviewer_agent
-from app.agents.interview_graph import advance_interview, start_interview
-from app.runtime_skills.question_generation import PreviousAnswer, QuestionGenerationInput
-from app.runtime_skills.resume_context import SafeResumeSection
-from app.schemas import InterviewAgentStartRequest, InterviewQuestion, InterviewTurnAnswer, InterviewTurnRequest, ProjectInterviewContext, ResumeSection
+from app.agents.interview_graph import MAX_AGENT_TURNS, advance_interview, start_interview
+from app.schemas import InterviewAgentStartRequest, InterviewQuestion, InterviewTurnAnswer, InterviewTurnRequest, ResumeSection
+from app.skills.interview import AnswerDecision, generate_main_question, stage_plan
+
+STAGE_LABELS = ["自我介绍", "简历深挖", "行为面试", "岗位专业", "结束反问"]
 
 
 def start_request(mode: str = "formal", focus: str | None = None) -> InterviewAgentStartRequest:
@@ -17,189 +17,159 @@ def start_request(mode: str = "formal", focus: str | None = None) -> InterviewAg
     )
 
 
-def turn_request(follow_up_count: int, answer: str) -> InterviewTurnRequest:
+def turn_request(follow_up_count: int, answer: str, main_question_index: int = 1) -> InterviewTurnRequest:
     return InterviewTurnRequest(
-        **start_request().model_dump(exclude_none=True), interview_id="session-1",
-        current_question=InterviewQuestion(id="q1", stage="简历深挖", text="请介绍该项目。", is_follow_up=follow_up_count > 0, main_question_index=1, follow_up_count=follow_up_count),
+        **start_request().model_dump(exclude={"interview_id"}), interview_id="session-1",
+        current_question=InterviewQuestion(id="q1", stage=STAGE_LABELS[main_question_index], text="请介绍该项目。", is_follow_up=follow_up_count > 0, main_question_index=main_question_index, follow_up_count=follow_up_count),
         answers=[InterviewTurnAnswer(question_id="q1", question="请介绍该项目。", answer=answer, stage="简历深挖", is_follow_up=follow_up_count > 0)],
     )
 
 
-def project_turn_request(*, follow_up_count: int = 0, answer: str = "我负责用户访谈。", insufficient_count: int = 0, round_count: int = 1) -> InterviewTurnRequest:
-    question_id = f"project-q-{round_count}"
-    context = ProjectInterviewContext(
-        project_key="project-12345678",
-        project_resume_evidence="负责 CoachCraft 产品规划并完成 20 项验收",
-        round_count=round_count,
-        consecutive_insufficient_count=insufficient_count,
-        question_ids=[question_id],
-        visited_project_evidence=["负责 CoachCraft 产品规划并完成 20 项验收"],
-    )
-    return InterviewTurnRequest(
-        **start_request().model_dump(exclude_none=True),
-        interview_id="session-project",
-        current_question=InterviewQuestion(
-            id=question_id,
-            stage="简历深挖",
-            text="请介绍 CoachCraft 项目。",
-            is_follow_up=follow_up_count > 0,
-            main_question_index=1,
-            follow_up_count=follow_up_count,
-            resume_evidence=context.project_resume_evidence,
-            project_context=context,
-        ),
-        answers=[InterviewTurnAnswer(
-            question_id=question_id,
-            question="请介绍 CoachCraft 项目。",
-            answer=answer,
-            stage="简历深挖",
-            is_follow_up=follow_up_count > 0,
-        )],
-    )
+def tool_call(name: str, call_id: str = "call-1") -> dict:
+    return {"role": "assistant", "content": None, "tool_calls": [{"id": call_id, "type": "function", "function": {"name": name, "arguments": "{}"}}]}
+
+
+def activate_interview_skill(call_id: str = "call-skill") -> dict:
+    message = tool_call("activate_skill", call_id)
+    message["tool_calls"][0]["function"]["arguments"] = json.dumps({"skill_name": "conduct_resume_interviews"})
+    return message
+
+
+def final_message() -> dict:
+    return {"role": "assistant", "content": json.dumps({"status": "ready", "reason": "工具结果已经足够"}, ensure_ascii=False)}
 
 
 class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        self.selector_patcher = patch("app.agent_runtime.selection.chat_json", new_callable=AsyncMock)
-        self.selector_chat = self.selector_patcher.start()
-
-        async def select_skill(**kwargs):
-            payload = json.loads(kwargs["messages"][1]["content"])
-            objective = payload["objective"]
-            if "简历" in objective and "项目证据" not in objective:
-                name = "resume_context"
-            elif "项目证据" in objective:
-                name = "resume_project_followup"
-            elif "回答" in objective:
-                name = "answer_evaluation"
-            elif "报告" in objective:
-                name = "report_generation"
-            else:
-                name = "question_generation"
-            return {"skill_name": name, "reason": f"目标需要 {name}"}
-
-        self.selector_chat.side_effect = select_skill
-
-    async def asyncTearDown(self) -> None:
-        self.selector_patcher.stop()
-
     def test_stage_plans_are_deterministic(self) -> None:
-        self.assertEqual(len(interviewer_agent.policy.stage_plan("formal", None)), 4)
-        self.assertEqual(interviewer_agent.policy.stage_plan("focused", "behavioral"), ["behavioral"] * 3)
+        self.assertEqual(len(stage_plan("formal", None)), 5)
+        self.assertEqual(stage_plan("focused", "behavioral"), ["behavioral"] * 3)
 
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    async def test_formal_start_uses_stable_skill_template_without_llm(self, generate: AsyncMock) -> None:
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    @patch("app.skills.interview.generate_main_question", new_callable=AsyncMock)
+    async def test_start_agent_runs_tool_then_model_again(self, generate: AsyncMock, chat: AsyncMock) -> None:
+        chat.side_effect = [activate_interview_skill(), tool_call("generate_interview_question"), final_message()]
+        generate.return_value = InterviewQuestion(id="q1", stage="自我介绍", text="请结合 CoachCraft 经历做自我介绍。", main_question_index=0, follow_up_count=0)
         result = await start_interview(start_request())
         self.assertEqual(result.source, "resume_driven_agent")
-        self.assertEqual(result.total_main_questions, 4)
-        self.assertIn("产品经理", result.question.text)
-        self.assertIn("自我介绍", result.question.text)
-        generate.assert_not_awaited()
-        self.assertEqual(self.selector_chat.await_count, 2)
+        self.assertEqual(result.total_main_questions, 5)
+        self.assertEqual(chat.await_count, 3)
+        self.assertIn("conduct_resume_interviews", chat.await_args_list[1].kwargs["messages"][-1]["content"])
+        third_messages = chat.await_args_list[2].kwargs["messages"]
+        self.assertEqual(third_messages[-1]["role"], "tool")
+        self.assertIn("CoachCraft", third_messages[-1]["content"])
 
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    async def test_resume_deep_dive_question_creates_project_context(self, generate: AsyncMock) -> None:
-        evidence = "负责 CoachCraft 产品规划并完成 20 项验收"
-        generate.return_value = {"question": "请介绍 CoachCraft 项目的背景。", "resume_evidence": evidence}
-        result = await start_interview(start_request(mode="focused", focus="resume-deep-dive"))
-        context = result.question.project_context
-        self.assertIsNotNone(context)
-        self.assertEqual(context.project_resume_evidence, evidence)
-        self.assertEqual(context.round_count, 1)
-        self.assertEqual(context.question_ids, [result.question.id])
-
-    @patch("app.runtime_skills.answer_evaluation.skill.chat_json", new_callable=AsyncMock)
-    async def test_follow_up_keeps_main_question_index(self, evaluate: AsyncMock) -> None:
-        evaluate.return_value = {"action": "follow_up", "question": "你个人具体负责了哪部分？", "reason": "个人贡献不清楚"}
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    @patch("app.skills.interview.evaluate_answer", new_callable=AsyncMock)
+    async def test_follow_up_keeps_main_question_index(self, evaluate: AsyncMock, chat: AsyncMock) -> None:
+        chat.side_effect = [activate_interview_skill(), tool_call("evaluate_interview_answer"), final_message()]
+        evaluate.return_value = AnswerDecision(action="follow_up", question="你个人具体负责了哪部分？", reason="个人贡献不清楚")
         result = await advance_interview(turn_request(0, "我们团队完成了这个项目。"))
         self.assertFalse(result.completed)
         self.assertTrue(result.next_question.is_follow_up)
         self.assertEqual(result.next_question.main_question_index, 1)
         self.assertEqual(result.next_question.follow_up_count, 1)
+        self.assertEqual(chat.await_count, 3)
 
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    async def test_third_follow_up_is_overridden_to_next_main(self, generate: AsyncMock) -> None:
-        generate.return_value = {"question": "下一道主问题", "resume_evidence": ""}
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    @patch("app.skills.interview.generate_main_question", new_callable=AsyncMock)
+    async def test_agent_observes_decision_then_calls_next_tool(self, generate: AsyncMock, chat: AsyncMock) -> None:
+        chat.side_effect = [
+            activate_interview_skill(),
+            tool_call("evaluate_interview_answer", "call-evaluate"),
+            tool_call("generate_interview_question", "call-generate"),
+            final_message(),
+        ]
+        generate.return_value = InterviewQuestion(id="q2", stage="行为面试", text="下一道主问题", main_question_index=2, follow_up_count=0)
         result = await advance_interview(turn_request(2, "还是比较笼统。"))
         self.assertFalse(result.next_question.is_follow_up)
         self.assertEqual(result.next_question.main_question_index, 2)
         self.assertIn("最多 2 次", result.decision_reason)
+        self.assertEqual(chat.await_count, 4)
+        fourth_messages = chat.await_args_list[3].kwargs["messages"]
+        self.assertEqual([item["role"] for item in fourth_messages[-4:]], ["assistant", "tool", "assistant", "tool"])
 
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    async def test_unknown_answer_advances_without_model_evaluation(self, generate: AsyncMock) -> None:
-        generate.return_value = {"question": "下一道主问题", "resume_evidence": ""}
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    @patch("app.skills.interview.generate_main_question", new_callable=AsyncMock)
+    async def test_unknown_answer_advances_without_answer_model_call(self, generate: AsyncMock, chat: AsyncMock) -> None:
+        chat.side_effect = [activate_interview_skill(), tool_call("evaluate_interview_answer"), tool_call("generate_interview_question", "call-2"), final_message()]
+        generate.return_value = InterviewQuestion(id="q2", stage="行为面试", text="下一道主问题", main_question_index=2, follow_up_count=0)
         result = await advance_interview(turn_request(0, "不知道"))
         self.assertFalse(result.next_question.is_follow_up)
         self.assertIn("不知道", result.decision_reason)
 
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    async def test_final_answer_before_required_tool_is_rejected_and_loop_continues(self, chat: AsyncMock) -> None:
+        chat.side_effect = [final_message(), activate_interview_skill(), tool_call("generate_interview_question"), final_message()]
+        with patch("app.skills.interview.generate_main_question", new_callable=AsyncMock) as generate:
+            generate.return_value = InterviewQuestion(id="q1", stage="自我介绍", text="第一题", main_question_index=0, follow_up_count=0)
+            result = await start_interview(start_request())
+        self.assertEqual(result.question.text, "第一题")
+        self.assertEqual(chat.await_count, 4)
+        self.assertIn("还不足以结束", chat.await_args_list[1].kwargs["messages"][-1]["content"])
+
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    @patch("app.skills.interview.generate_main_question", new_callable=AsyncMock)
+    async def test_malformed_final_output_is_corrected_once(self, generate: AsyncMock, chat: AsyncMock) -> None:
+        chat.side_effect = [
+            activate_interview_skill(),
+            tool_call("generate_interview_question"),
+            {"role": "assistant", "content": '已完成\n{"status":"ready","reason":"问题已生成"}'},
+            final_message(),
+        ]
+        generate.return_value = InterviewQuestion(
+            id="q1", stage="自我介绍", text="第一题", main_question_index=0, follow_up_count=0,
+        )
+        result = await start_interview(start_request())
+        self.assertEqual(result.question.text, "第一题")
+        self.assertEqual(chat.await_count, 4)
+        self.assertIn("只返回纯 JSON", chat.await_args_list[3].kwargs["messages"][-1]["content"])
+
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    @patch("app.skills.interview.generate_main_question", new_callable=AsyncMock)
+    async def test_malformed_final_output_fails_after_one_correction(self, generate: AsyncMock, chat: AsyncMock) -> None:
+        chat.side_effect = [
+            activate_interview_skill(),
+            tool_call("generate_interview_question"),
+            {"role": "assistant", "content": "not-json"},
+            {"role": "assistant", "content": "still-not-json"},
+        ]
+        generate.return_value = InterviewQuestion(
+            id="q1", stage="自我介绍", text="第一题", main_question_index=0, follow_up_count=0,
+        )
+        with self.assertRaisesRegex(ValueError, "一次纠正后"):
+            await start_interview(start_request())
+
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    async def test_agent_loop_has_hard_turn_limit(self, chat: AsyncMock) -> None:
+        chat.return_value = final_message()
+        with self.assertRaisesRegex(RuntimeError, f"最多 {MAX_AGENT_TURNS} 轮"):
+            await start_interview(start_request())
+        self.assertEqual(chat.await_count, MAX_AGENT_TURNS)
+
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    async def test_unregistered_tool_is_rejected(self, chat: AsyncMock) -> None:
+        bad = tool_call("activate_skill")
+        bad["tool_calls"][0]["function"]["arguments"] = json.dumps({"skill_name": "invented_skill"})
+        chat.return_value = bad
+        with self.assertRaisesRegex(ValueError, "未注册"):
+            await start_interview(start_request())
+
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    async def test_malformed_tool_arguments_are_rejected(self, chat: AsyncMock) -> None:
+        bad = tool_call("generate_interview_question")
+        bad["tool_calls"][0]["function"]["arguments"] = "{"
+        chat.side_effect = [activate_interview_skill(), bad]
+        with self.assertRaisesRegex(ValueError, "无效 JSON"):
+            await start_interview(start_request())
+
+    @patch("app.skills.interview.chat_json", new_callable=AsyncMock)
     async def test_paraphrased_resume_evidence_is_removed_without_blocking(self, chat: AsyncMock) -> None:
         chat.return_value = {"question": "请继续说明你在项目中补充的细节。", "resume_evidence": "模型概括但并非简历原文"}
-        previous = turn_request(0, "我还负责了简历中没有展开说明的用户访谈。" ).answers
-        skill = interviewer_agent.registry.require("question_generation")
-        result = await skill.invoke(QuestionGenerationInput(
-            stage="behavioral",
-            stage_label="行为面试",
-            main_question_number=3,
-            target_role="产品经理",
-            job_description="负责用户研究和需求分析",
-            confirmed_resume=[SafeResumeSection(title="项目经历", content="负责 CoachCraft 产品规划并完成 20 项验收")],
-            previous_answers=[PreviousAnswer(question=item.question, answer=item.answer) for item in previous],
-            searchable_resume_text="负责 CoachCraft 产品规划并完成 20 项验收",
-        ))
+        previous = turn_request(0, "我还负责了简历中没有展开说明的用户访谈。").answers
+        result = await generate_main_question(start_request(), "behavioral", 2, previous)
         self.assertEqual(result.resume_evidence, "")
-        sent_data = __import__('json').loads(chat.await_args.kwargs["messages"][1]["content"].split("\n", 1)[1])
+        sent_data = json.loads(chat.await_args.kwargs["messages"][1]["content"].split("\n", 1)[1])
         self.assertEqual(sent_data["previous_answers"][0]["answer"], "我还负责了简历中没有展开说明的用户访谈。")
-
-    @patch("app.runtime_skills.resume_project_followup.skill.chat_json", new_callable=AsyncMock)
-    async def test_resume_project_stage_uses_dedicated_followup_skill(self, project_chat: AsyncMock) -> None:
-        project_chat.return_value = {
-            "action": "follow_up",
-            "information_quality": "effective",
-            "newly_covered_targets": [{
-                "target": "personal_responsibility",
-                "answer_id": "project-q-1",
-                "evidence_quote": "我负责用户访谈",
-            }],
-            "next_target": "result",
-            "question": "这些访谈最终产生了什么可核对的结果？",
-            "reason": "个人职责已覆盖，项目结果未覆盖。",
-        }
-        result = await advance_interview(project_turn_request())
-        self.assertTrue(result.next_question.is_follow_up)
-        self.assertEqual(result.next_question.project_context.round_count, 2)
-        self.assertEqual(result.next_question.project_context.coverage.personal_responsibility, "covered")
-        self.assertEqual(project_chat.await_count, 1)
-
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    @patch("app.runtime_skills.resume_project_followup.skill.chat_json", new_callable=AsyncMock)
-    async def test_two_consecutive_insufficient_project_answers_force_topic_switch(
-        self, project_chat: AsyncMock, question_chat: AsyncMock,
-    ) -> None:
-        project_chat.return_value = {
-            "action": "follow_up",
-            "information_quality": "insufficient",
-            "newly_covered_targets": [],
-            "next_target": "personal_responsibility",
-            "question": "你个人具体负责了什么？",
-            "reason": "回答缺少有效信息。",
-        }
-        question_chat.return_value = {"question": "请介绍一次你解决团队分歧的经历。", "resume_evidence": ""}
-        result = await advance_interview(project_turn_request(answer="不太清楚。", insufficient_count=1, round_count=2, follow_up_count=1))
-        self.assertFalse(result.next_question.is_follow_up)
-        self.assertEqual(result.next_question.stage, "行为面试")
-        self.assertIn("连续两次", result.decision_reason)
-
-    @patch("app.runtime_skills.question_generation.skill.chat_json", new_callable=AsyncMock)
-    @patch("app.runtime_skills.resume_project_followup.skill.chat_json", new_callable=AsyncMock)
-    async def test_not_responsible_switches_without_calling_project_model(
-        self, project_chat: AsyncMock, question_chat: AsyncMock,
-    ) -> None:
-        question_chat.return_value = {"question": "请介绍一次跨团队合作经历。", "resume_evidence": ""}
-        result = await advance_interview(project_turn_request(answer="这个部分由其他人负责。"))
-        self.assertEqual(project_chat.await_count, 0)
-        self.assertEqual(result.next_question.stage, "行为面试")
-        self.assertIn("不是本人负责", result.decision_reason)
 
 
 if __name__ == "__main__":

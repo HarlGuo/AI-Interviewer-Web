@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -41,7 +40,7 @@ async def test_retry_replays_existing_start_without_calling_agent(monkeypatch):
     commit = AsyncMock()
     monkeypatch.setattr(main, "commit_daily_interview", commit)
     agent_start = AsyncMock()
-    monkeypatch.setattr(main, "interviewer_agent", SimpleNamespace(start=agent_start))
+    monkeypatch.setattr(main, "start_interview", agent_start)
     result = await main.create_interview(start_config(), USER)
     assert result.interview_id == INTERVIEW_ID
     assert result.question.text == "请做一段自我介绍。"
