@@ -18,6 +18,14 @@ function cloudErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function resumeSaveErrorMessage(error: unknown): string {
+  const message = cloudErrorMessage(error, '简历信息保存失败，请稍后重试。');
+  if (message.includes('duplicate key value') || message.includes('resumes_object_path_key')) {
+    return '检测到旧简历记录，暂时无法完成替换，请重新选择文件后重试。';
+  }
+  return message;
+}
+
 type ResumeRow = {
   id: string;
   file_name: string;
@@ -88,10 +96,13 @@ export async function saveCloudResume(userId: string, resume: ResumeFile, source
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (existingError) throw existingError;
+  if (existingError) throw new Error(resumeSaveErrorMessage(existingError));
 
   const replacingFile = !resume.objectPath;
-  const objectPath = existing?.object_path ?? `${userId}/current.pdf`;
+  const localObjectPath = resume.objectPath?.startsWith(`${userId}/`) ? resume.objectPath : null;
+  const objectPath = existing?.object_path
+    ?? localObjectPath
+    ?? (existing ? `${userId}/${existing.id}.pdf` : `${userId}/current.pdf`);
   if (replacingFile) {
     let uploadBody: File | ArrayBuffer;
     if (source?.webFile) {
@@ -122,11 +133,13 @@ export async function saveCloudResume(userId: string, resume: ResumeFile, source
   };
   const query = existing
     ? supabase.from('resumes').update(values).eq('id', existing.id).eq('user_id', userId)
-    : supabase.from('resumes').insert(values);
+    // A soft-deleted resume can still own this globally unique object_path.
+    // Upsert revives that row and also makes concurrent first uploads idempotent.
+    : supabase.from('resumes').upsert(values, { onConflict: 'object_path' });
   const { data, error } = await query
     .select('id,file_name,object_path,file_size_bytes,status,review_status,sections,warnings,created_at')
     .single();
-  if (error) throw new Error(cloudErrorMessage(error, '简历信息保存失败，请稍后重试。'));
+  if (error) throw new Error(resumeSaveErrorMessage(error));
   return rowToResume(data as ResumeRow);
 }
 
