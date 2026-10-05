@@ -1,11 +1,11 @@
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BottomNav, Button, Card, Screen } from '@/components/ui';
 import { TrainingFocus } from '@/domain/models';
-import { track } from '@/services/telemetry';
 import { showMessage } from '@/services/dialogs';
+import { track } from '@/services/telemetry';
 import { useApp } from '@/state/app-context';
 import { isQuotaUsedToday, isResumableSession } from '@/state/session-recovery';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -34,10 +34,10 @@ export default function HomeScreen() {
     router.push({ pathname: ready ? '/setup' : '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };
 
-  const openReport = () => state.report ? router.push('/report') : showMessage('暂无面试复盘', '完成一次模拟面试后，本次报告和复盘会显示在这里。');
+  const openReport = () => router.push('/reports' as Href);
 
   return <View style={styles.page}><Screen>
-    <View style={styles.brand}><Text style={styles.brandText}>AI 面试官</Text><Text style={styles.brandBadge}>P0</Text></View>
+    <View style={styles.brand}><Text style={styles.brandText}>AI 面试官</Text></View>
     <Card tone={ready ? 'success' : 'warning'}>
       <View style={styles.resumeRow}><Text style={styles.statusIcon}>{ready ? '✅' : '📄'}</Text><View style={styles.flex}>
         <Text style={[styles.resumeTitle, { color: ready ? colors.success : colors.warningText }]}>{ready ? '简历已确认' : '尚未准备有效简历'}</Text>
@@ -71,7 +71,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }, restoring: { color: colors.muted, marginTop: 10 }, brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg },
-  brandText: { ...typography.title, color: colors.primary }, brandBadge: { color: colors.primary, backgroundColor: colors.primarySoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, fontWeight: '700' },
+  brandText: { ...typography.title, color: colors.primary },
   resumeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 }, statusIcon: { fontSize: 24 }, flex: { flex: 1 }, resumeTitle: { fontSize: 16, fontWeight: '800' }, resumeMeta: { color: colors.muted, marginTop: 3, fontSize: 13 }, link: { color: colors.primary, fontWeight: '700' },
   formalCard: { backgroundColor: colors.primary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md }, formalTop: { flexDirection: 'row', justifyContent: 'space-between' }, recommend: { backgroundColor: 'rgba(255,255,255,.18)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 }, recommendText: { color: '#fff', fontWeight: '700' }, formalIcon: { fontSize: 34 },
   formalTitle: { color: '#fff', fontSize: 26, fontWeight: '800' }, formalBody: { color: '#DCE7FF', fontSize: 14, lineHeight: 21 }, tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, tag: { color: '#fff', backgroundColor: 'rgba(255,255,255,.16)', borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 4, fontSize: 12 },

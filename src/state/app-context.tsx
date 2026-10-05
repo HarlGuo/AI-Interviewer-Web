@@ -1,15 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { AnswerSource, AppState, InterviewMode, InterviewQuestion, InterviewReport, ResumeFile, SpeechDeliveryMetrics, TargetRole, TrainingFocus } from '@/domain/models';
+import { AnswerSource, AppState, InterviewMode, InterviewQuestion, InterviewReport, InterviewReportRecord, ResumeFile, SpeechDeliveryMetrics, TargetRole, TrainingFocus } from '@/domain/models';
 import { createUuid } from '@/services/ids';
+import { loadCloudReportHistory } from '@/services/report-cloud';
 import { loadCloudResume, removeCloudResume, ResumeUploadSource, saveCloudResume } from '@/services/resume-cloud';
 import { useAuth } from '@/state/auth-context';
 import { beijingDate, isResumableSession } from '@/state/session-recovery';
 
 const STORAGE_KEY_PREFIX = '@ai-interviewer/app-state/v4';
 const LEGACY_STORAGE_KEYS = ['@ai-interviewer/app-state/v2'];
-const initialState: AppState = { resume: null, target: null, activeSession: null, report: null, quotaConsumedOn: null };
+const initialState: AppState = { resume: null, target: null, activeSession: null, report: null, quotaConsumedOn: null, reportHistory: [], selectedReportId: null };
 
 type ContextValue = {
   state: AppState; hydrated: boolean;
@@ -21,13 +22,14 @@ type ContextValue = {
   updateAnswerDraft: (answerDraft: string) => Promise<void>; setAudioUri: (audioUri: string | null) => Promise<void>;
   applyInterviewTurn: (answer: string, source: AnswerSource, deliveryMetrics: SpeechDeliveryMetrics | null, nextQuestion: InterviewQuestion | null, completed: boolean) => Promise<void>;
   setSessionStatus: (status: 'active' | 'paused' | 'ended-early') => Promise<void>;
-  saveReport: (report: InterviewReport) => Promise<void>; clearSession: () => Promise<void>;
+  saveReport: (report: InterviewReport) => Promise<void>; selectReport: (reportId: string) => Promise<void>; clearSession: () => Promise<void>;
 };
 
 const AppContext = createContext<ContextValue | null>(null);
 
 export function AppProvider({ children }: PropsWithChildren) {
   const { cloudEnabled, localUserId, ready: authReady, user } = useAuth();
+  const userId = user?.id;
   const storageKey = `${STORAGE_KEY_PREFIX}/${localUserId}`;
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
@@ -39,6 +41,8 @@ export function AppProvider({ children }: PropsWithChildren) {
     if (!authReady) return;
     let cancelled = false;
     storageKeyRef.current = storageKey;
+    // Hydration intentionally resets when the signed-in account changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(false);
     const hydrate = async () => {
       await AsyncStorage.multiRemove(LEGACY_STORAGE_KEYS);
@@ -48,10 +52,13 @@ export function AppProvider({ children }: PropsWithChildren) {
         try { localState = { ...initialState, ...JSON.parse(raw) }; }
         catch { await AsyncStorage.removeItem(storageKey); }
       }
-      if (cloudEnabled && user) {
+      if (cloudEnabled && userId) {
         try {
-          const resume = await loadCloudResume(user.id);
-          localState = { ...localState, resume };
+          const [resume, cloudReports] = await Promise.all([loadCloudResume(userId), loadCloudReportHistory()]);
+          const localReports = localState.reportHistory ?? [];
+          const mergedReports = [...cloudReports, ...localReports.filter((local) => !cloudReports.some((cloud) => cloud.interviewId === local.interviewId))]
+            .sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 20);
+          localState = { ...localState, resume, reportHistory: mergedReports };
         } catch {
           // A temporary cloud read failure must not erase a locally recoverable interview.
         }
@@ -69,7 +76,7 @@ export function AppProvider({ children }: PropsWithChildren) {
       }
     });
     return () => { cancelled = true; };
-  }, [authReady, cloudEnabled, storageKey, user?.id]);
+  }, [authReady, cloudEnabled, storageKey, userId]);
 
   const commit = useCallback(async (update: (current: AppState) => AppState) => {
     const next = update(stateRef.current);
@@ -85,11 +92,11 @@ export function AppProvider({ children }: PropsWithChildren) {
   const value = useMemo<ContextValue>(() => ({
     state, hydrated,
     saveResume: async (resume, source) => {
-      const savedResume = cloudEnabled && user ? await saveCloudResume(user.id, resume, source) : resume;
+      const savedResume = cloudEnabled && userId ? await saveCloudResume(userId, resume, source) : resume;
       await commit((current) => ({ ...current, resume: savedResume }));
     },
     removeResume: async () => {
-      if (cloudEnabled && user) await removeCloudResume(user.id, stateRef.current.resume);
+      if (cloudEnabled && userId) await removeCloudResume(userId, stateRef.current.resume);
       await commit((current) => ({ ...current, resume: null }));
     },
     saveTarget: async (target) => commit((current) => ({ ...current, target })),
@@ -98,7 +105,7 @@ export function AppProvider({ children }: PropsWithChildren) {
         return { ...current, target: input.target };
       }
       const interviewId = createUuid();
-      return { ...current, target: input.target, report: null, activeSession: { id: interviewId, ...input, status: 'draft', interviewId, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } };
+      return { ...current, target: input.target, report: null, selectedReportId: null, activeSession: { id: interviewId, ...input, status: 'draft', interviewId, questions: [], currentIndex: 0, answers: [], totalMainQuestions: 0, answerDraft: '', audioUri: null, startedAt: null, updatedAt: new Date().toISOString() } };
     }),
     ensureInterviewId: async (interviewId) => commit((current) => current.activeSession && !current.activeSession.interviewId
       ? { ...current, activeSession: { ...current.activeSession, interviewId, updatedAt: new Date().toISOString() } }
@@ -118,9 +125,19 @@ export function AppProvider({ children }: PropsWithChildren) {
       });
     },
     setSessionStatus: async (status) => commit((current) => current.activeSession ? { ...current, quotaConsumedOn: status === 'ended-early' ? beijingDate() : current.quotaConsumedOn, activeSession: { ...current.activeSession, status, updatedAt: new Date().toISOString() } } : current),
-    saveReport: async (report) => commit((current) => ({ ...current, report })),
-    clearSession: async () => commit((current) => ({ ...current, activeSession: null })),
-  }), [cloudEnabled, commit, hydrated, state, user?.id]);
+    saveReport: async (report) => commit((current) => {
+      const session = current.activeSession;
+      if (!session?.interviewId) return { ...current, report };
+      const completedAt = new Date().toISOString();
+      const record: InterviewReportRecord = {
+        id: session.interviewId, interviewId: session.interviewId, target: session.target, mode: session.mode, focus: session.focus,
+        status: session.status === 'ended-early' ? 'ended-early' : 'completed', startedAt: session.startedAt, completedAt, report,
+      };
+      return { ...current, report, selectedReportId: record.id, reportHistory: [record, ...current.reportHistory.filter((item) => item.interviewId !== record.interviewId)].slice(0, 20) };
+    }),
+    selectReport: async (reportId) => commit((current) => ({ ...current, selectedReportId: reportId })),
+    clearSession: async () => commit((current) => ({ ...current, activeSession: null, report: null })),
+  }), [cloudEnabled, commit, hydrated, state, userId]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 

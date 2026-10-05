@@ -11,10 +11,10 @@ export default function PendingScreen() {
     : ['注册申请已提交', '管理员通过审核后，你即可使用全部内测功能。'];
   return <Screen>
     <View style={styles.hero}><Text style={styles.title}>{copy[0]}</Text><Text style={styles.subtitle}>{copy[1]}</Text></View>
-    <Card><Text style={styles.label}>申请邮箱</Text><Text style={styles.email}>{user?.email ?? '未知邮箱'}</Text><Text style={styles.tip}>审核状态不会消耗面试次数。通过后点击“刷新审核状态”。</Text>
+    <Card><Text style={styles.label}>申请邮箱</Text><Text style={styles.email}>{user?.email ?? '未知邮箱'}</Text>
       <Button label="刷新审核状态" onPress={refreshAccountStatus} /><Button label="退出登录" onPress={signOut} variant="ghost" />
     </Card>
   </Screen>;
 }
 
-const styles = StyleSheet.create({ hero: { marginTop: spacing.xl, marginBottom: spacing.lg }, title: { ...typography.title, color: colors.ink }, subtitle: { color: colors.muted, marginTop: 8, lineHeight: 22 }, label: { color: colors.muted }, email: { color: colors.ink, fontWeight: '700', marginTop: 6 }, tip: { color: colors.muted, lineHeight: 21, marginVertical: spacing.lg } });
+const styles = StyleSheet.create({ hero: { marginTop: spacing.xl, marginBottom: spacing.lg }, title: { ...typography.title, color: colors.ink }, subtitle: { color: colors.muted, marginTop: 8, lineHeight: 22 }, label: { color: colors.muted }, email: { color: colors.ink, fontWeight: '700', marginTop: 6, marginBottom: spacing.lg } });

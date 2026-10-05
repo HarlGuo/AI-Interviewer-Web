@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomNav, Button, Card, Screen } from '@/components/ui';
@@ -10,7 +10,14 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 export default function ReportScreen() {
   const { state, saveReport, clearSession } = useApp(); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [expanded, setExpanded] = useState<number | null>(null); const requested = useRef(false);
-  const session = state.activeSession; const report = state.report;
+  const session = state.activeSession;
+  const savedRecord = state.reportHistory.find((item) => item.id === state.selectedReportId) ?? null;
+  const report = savedRecord?.report ?? state.report ?? null;
+  const interviewId = savedRecord?.interviewId ?? session?.interviewId ?? null;
+  const target = savedRecord?.target ?? session?.target ?? null;
+  const mode = savedRecord?.mode ?? session?.mode ?? null;
+  const status = savedRecord?.status ?? session?.status ?? null;
+  const isCurrentSessionReport = Boolean(session && (!savedRecord || savedRecord.interviewId === session.interviewId));
 
   const generate = async () => {
     if (!session?.answers.length || !session.interviewId || loading) return; setLoading(true); setError(''); const startedAt = Date.now(); track('report_generation_started', {}, session.interviewId);
@@ -18,23 +25,25 @@ export default function ReportScreen() {
     catch (cause) { track('report_generation_failed', { error_code: 'request_failed', latency_ms: Date.now() - startedAt }, session.interviewId); setError(cause instanceof Error ? cause.message : '请检查网络、后端和 DeepSeek 配置。'); }
     finally { setLoading(false); }
   };
+  // Generation is guarded by requested and must only react to persisted session/report state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (session?.answers.length && !report && !requested.current) { requested.current = true; void generate(); } }, [session, report]);
-  useEffect(() => { if (report) track('report_viewed', { completed: session?.status === 'completed' }, session?.interviewId); }, [report]);
-  const finish = async () => { await clearSession(); router.replace('/'); };
-  if (!session) return <Screen><Text style={styles.title}>没有可用的面试记录</Text><Button label="返回首页" onPress={() => router.replace('/')} /></Screen>;
+  useEffect(() => { if (report) track('report_viewed', { completed: status === 'completed' }, interviewId); }, [interviewId, report, status]);
+  const finish = async () => { if (isCurrentSessionReport) await clearSession(); router.replace('/'); };
+  if (!report && !session) return <Screen><Text style={styles.title}>没有可用的面试记录</Text><Button label="查看面试复盘" onPress={() => router.replace('/reports' as Href)} /></Screen>;
 
   return <View style={styles.page}><Screen>
     <Text style={styles.title}>{report ? '本次面试报告' : '正在生成面试报告'}</Text>
-    {report ? <><Button label={loading ? '正在重新生成…' : '使用已保存回答重新生成报告'} variant="secondary" disabled={loading} onPress={() => void generate()} />{error ? <Text style={styles.regenerateError}>{error}</Text> : null}</> : null}
+    {report && isCurrentSessionReport && session?.answers.length ? <><Button label={loading ? '正在重新生成…' : '使用已保存回答重新生成报告'} variant="secondary" disabled={loading} onPress={() => void generate()} />{error ? <Text style={styles.regenerateError}>{error}</Text> : null}</> : null}
     {!report ? <Card tone={error ? 'warning' : 'blue'}>{loading ? <><ActivityIndicator color={colors.primary} size="large" /><Text style={styles.loadingTitle}>正在生成面试复盘</Text><Text style={styles.body}>正在整理本次回答、语音节奏和改进建议，通常需要 1–3 分钟。请保持页面打开。</Text></> : <><Text style={styles.errorTitle}>报告生成失败</Text><Text style={styles.body}>{error}</Text><Button label="重新生成" onPress={() => { requested.current = true; void generate(); }} /></>}</Card> : <>
-      <View style={styles.scoreCard}><View><Text style={styles.scoreLabel}>{session.target.title} · {session.mode === 'formal' ? '正式模拟' : '单项训练'}</Text><Text style={styles.completion}>{report.completion}</Text></View><View style={styles.scoreCircle}><Text style={styles.score}>{report.overall_score}</Text><Text style={styles.scoreUnit}>综合分</Text></View></View>
+      <View style={styles.scoreCard}><View><Text style={styles.scoreLabel}>{target?.title ?? '模拟面试'} · {mode === 'formal' ? '正式模拟' : '单项训练'}</Text><Text style={styles.completion}>{report.completion}</Text></View><View style={styles.scoreCircle}><Text style={styles.score}>{report.overall_score}</Text><Text style={styles.scoreUnit}>综合分</Text></View></View>
       <Card><Text style={styles.cardTitle}>总体评价</Text><Text style={styles.body}>{cleanUserFacingText(report.summary)}</Text></Card>
       <Text style={styles.sectionTitle}>维度评分</Text>{report.dimensions.map((item) => <Card key={item.name}><View style={styles.dimensionHeader}><View><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.level}>{item.level ? `行为等级 ${item.level}/5` : '暂未评分'}</Text></View><Text style={[styles.dimensionScore, item.score === null && styles.noScore]}>{item.score ?? '—'}</Text></View>{item.score !== null ? <View style={styles.bar}><View style={[styles.barFill, { width: `${item.score}%` }]} /></View> : null}<Text style={styles.body}>{cleanUserFacingText(item.basis)}</Text>{item.evidence.length ? <><Text style={styles.subhead}>回答片段</Text>{item.evidence.map((value, index) => <Text key={`${value}-${index}`} style={styles.quote}>“{value}”</Text>)}</> : null}<Text style={styles.subhead}>改进建议</Text><Text style={styles.body}>{cleanUserFacingText(item.suggestion)}</Text></Card>)}
-      <Text style={styles.sectionTitle}>单题分析</Text>{report.question_reviews.map((item, index) => <View key={`${item.question_id}-${index}`} style={styles.review}><Pressable onPress={() => { const next = expanded === index ? null : index; setExpanded(next); if (next !== null) track('report_advice_viewed', { question_index: index }, session.interviewId); }} style={styles.reviewHeader}><Text style={styles.reviewTitle}>第 {index + 1} 题复盘</Text><Text style={styles.chevron}>{expanded === index ? '▾' : '▸'}</Text></Pressable>{expanded === index ? <View style={styles.reviewBody}>{item.strengths.map((value, i) => <Text key={`s-${i}`} style={styles.good}>✓ {cleanUserFacingText(value)}</Text>)}{item.issues.map((value, i) => <Text key={`i-${i}`} style={styles.issue}>• {cleanUserFacingText(value)}</Text>)}{item.evidence.map((value, i) => <Text key={`e-${i}`} style={styles.quote}>“{value}”</Text>)}<View style={styles.advice}><Text style={styles.adviceTitle}>改进建议</Text><Text style={styles.adviceText}>{cleanUserFacingText(item.suggestion)}</Text></View></View> : null}</View>)}
+      <Text style={styles.sectionTitle}>单题分析</Text>{report.question_reviews.map((item, index) => <View key={`${item.question_id}-${index}`} style={styles.review}><Pressable onPress={() => { const next = expanded === index ? null : index; setExpanded(next); if (next !== null) track('report_advice_viewed', { question_index: index }, interviewId); }} style={styles.reviewHeader}><Text style={styles.reviewTitle}>第 {index + 1} 题复盘</Text><Text style={styles.chevron}>{expanded === index ? '▾' : '▸'}</Text></Pressable>{expanded === index ? <View style={styles.reviewBody}>{item.strengths.map((value, i) => <Text key={`s-${i}`} style={styles.good}>✓ {cleanUserFacingText(value)}</Text>)}{item.issues.map((value, i) => <Text key={`i-${i}`} style={styles.issue}>• {cleanUserFacingText(value)}</Text>)}{item.evidence.map((value, i) => <Text key={`e-${i}`} style={styles.quote}>“{value}”</Text>)}<View style={styles.advice}><Text style={styles.adviceTitle}>改进建议</Text><Text style={styles.adviceText}>{cleanUserFacingText(item.suggestion)}</Text></View></View> : null}</View>)}
     </>}
     <Button label="返回首页" variant={report ? 'primary' : 'ghost'} onPress={finish} />
     <Text style={styles.disclaimer}>评分采用公开的结构化面试行为锚定方法，仅用于练习反馈，不代表录用概率。</Text>
-  </Screen><BottomNav active="report" onHome={() => router.replace('/')} onInterview={() => router.push('/interview-hub')} onReport={() => undefined} onProfile={() => router.push('/profile')} /></View>;
+  </Screen><BottomNav active="report" onHome={() => void finish()} onInterview={() => router.push('/interview-hub')} onReport={() => router.replace('/reports' as Href)} onProfile={() => router.push('/profile')} /></View>;
 }
 
 const styles = StyleSheet.create({

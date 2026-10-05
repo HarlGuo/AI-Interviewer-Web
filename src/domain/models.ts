@@ -46,6 +46,10 @@ export type InterviewSession = {
 export type ReportDimension = { name: string; level: number | null; score: number | null; basis: string; evidence: string[]; suggestion: string };
 export type QuestionReview = { question_id: string; strengths: string[]; issues: string[]; evidence: string[]; suggestion: string };
 export type InterviewReport = { overall_score: number; completion: string; summary: string; evidence_notice: string; dimensions: ReportDimension[]; question_reviews: QuestionReview[] };
+export type InterviewReportRecord = {
+  id: string; interviewId: string; target: TargetRole; mode: InterviewMode; focus: TrainingFocus | null;
+  status: 'completed' | 'ended-early'; startedAt: string | null; completedAt: string; report: InterviewReport;
+};
 export type FeedbackSubmission = {
   satisfaction_score: number;
   payment_willingness: 'willing' | 'depends_on_price' | 'unwilling' | 'prefer_not_to_say';
@@ -59,4 +63,5 @@ export type AppState = {
   activeSession: InterviewSession | null;
   report: InterviewReport | null;
   quotaConsumedOn: string | null;
+  reportHistory: InterviewReportRecord[]; selectedReportId: string | null;
 };

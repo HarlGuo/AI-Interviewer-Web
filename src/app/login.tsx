@@ -45,13 +45,12 @@ export default function LoginScreen() {
       <Button disabled={busy} label={mode === 'register' ? '提交注册申请' : '登录'} onPress={submit} />
       <Button disabled={busy} label={mode === 'register' ? '已有账号，返回登录' : '没有账号，申请内测'} onPress={() => { setMode(mode === 'register' ? 'login' : 'register'); setError(''); setMessage(''); }} variant="ghost" />
     </Card>
-    <Text style={styles.notice}>测试阶段暂不验证邮箱。请使用你能长期访问的真实邮箱；正式上线前将启用邮箱验证、找回密码、用户协议和隐私政策。</Text>
   </Screen>;
 }
 
 const styles = StyleSheet.create({
   hero: { marginTop: spacing.xl, marginBottom: spacing.lg }, title: { ...typography.title, color: colors.ink }, subtitle: { color: colors.muted, lineHeight: 21, marginTop: 8 },
   label: { color: colors.ink, fontWeight: '700', marginBottom: 7 }, input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 14, minHeight: 50, color: colors.ink, backgroundColor: colors.surface, marginBottom: spacing.md },
-  error: { color: colors.danger, lineHeight: 20, marginBottom: spacing.sm }, success: { color: colors.success, lineHeight: 20, marginBottom: spacing.sm, fontWeight: '700' }, notice: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  error: { color: colors.danger, lineHeight: 20, marginBottom: spacing.sm }, success: { color: colors.success, lineHeight: 20, marginBottom: spacing.sm, fontWeight: '700' },
   agreement: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: spacing.md }, checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary }, check: { color: '#fff', fontWeight: '900' }, agreementText: { flex: 1, color: colors.muted, fontSize: 12, lineHeight: 18 },
 });

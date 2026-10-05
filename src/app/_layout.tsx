@@ -21,12 +21,14 @@ export default function RootLayout() {
 function ProtectedStack() {
   const { ready, cloudEnabled, user, accountStatus } = useAuth();
   const { hydrated, state } = useApp();
+  const userId = user?.id;
+  const activeSession = state.activeSession;
   const segments = useSegments();
   useEffect(() => {
-    if (!ready || !cloudEnabled || !user) return;
+    if (!ready || !cloudEnabled || !userId) return;
     track('authenticated_session_started');
     void flushTelemetry();
-  }, [cloudEnabled, ready, user?.id]);
+  }, [cloudEnabled, ready, userId]);
   useEffect(() => {
     if (!ready || !cloudEnabled) return;
     const onLogin = (segments[0] as string | undefined) === 'login';
@@ -34,11 +36,11 @@ function ProtectedStack() {
     if (!user && !onLogin) router.replace('/login' as Href);
     if (user && accountStatus !== 'approved' && !onPending) router.replace('/pending' as Href);
     if (user && accountStatus === 'approved' && (onLogin || onPending)) {
-      router.replace(isResumableSession(state.activeSession) ? '/interview' : '/');
+      router.replace(isResumableSession(activeSession) ? '/interview' : '/');
     }
-  }, [accountStatus, cloudEnabled, ready, segments, state.activeSession?.status, user]);
+  }, [accountStatus, activeSession, cloudEnabled, ready, segments, user]);
   useEffect(() => {
-    if (!hydrated || !isResumableSession(state.activeSession)) return;
+    if (!hydrated || !isResumableSession(activeSession)) return;
     const restoreInterview = () => {
       const leaf = segments[0] as string | undefined;
       if (!leaf || leaf === 'index' || leaf === 'interview-hub') router.replace('/interview');
@@ -54,7 +56,7 @@ function ProtectedStack() {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('pageshow', restoreInterview);
     };
-  }, [hydrated, segments, state.activeSession?.id, state.activeSession?.status]);
+  }, [activeSession, hydrated, segments]);
   if (!ready) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
   return <Stack screenOptions={{ headerBackTitle: '返回', headerShadowVisible: false, headerStyle: { backgroundColor: colors.surface }, headerTitleStyle: { color: colors.ink, fontWeight: '700' }, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -65,6 +67,7 @@ function ProtectedStack() {
         <Stack.Screen name="setup" options={{ title: '面试设置' }} />
         <Stack.Screen name="interview" options={{ title: '模拟面试', headerBackVisible: false }} />
         <Stack.Screen name="report" options={{ title: '面试报告', headerBackVisible: false }} />
+        <Stack.Screen name="reports" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ headerShown: false }} />
       </Stack>;
 }

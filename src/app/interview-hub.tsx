@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -31,7 +31,7 @@ export default function InterviewHubScreen() {
     if (!resumeReady) return router.push({ pathname: '/resume', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
     router.push({ pathname: '/setup', params: focus ? { mode: 'focused', focus } : { mode: 'formal' } });
   };
-  const openReport = () => state.report ? router.push('/report') : showMessage('暂无面试报告', '完成一次模拟面试后，本次报告会显示在这里。');
+  const openReport = () => router.push('/reports' as Href);
 
   if (!hydrated || resumable) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.restoring}>正在恢复上次面试…</Text></View>;
   return <View style={styles.page}><Screen>

@@ -24,6 +24,8 @@ export default function InterviewScreen() {
   const keepListeningRef = useRef(false); const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const answerBeforeSpeechRef = useRef(''); const finalSpeechRef = useRef(''); const answerRef = useRef(session?.answerDraft ?? ''); const pendingAutoSubmitRef = useRef(false); const submittingRef = useRef(false); const submitLatestRef = useRef<() => Promise<void>>(async () => undefined); const updateAnswerDraftRef = useRef(updateAnswerDraft); const previousQuestionIdRef = useRef(currentQuestionId); const speechUsedRef = useRef(false); const recordingStartedAtRef = useRef<number | null>(null); const presentedQuestionRef = useRef<string | null>(null); const deliveryTrackerRef = useRef(new SpeechDeliveryTracker()); const deliveryMetricsRef = useRef<ReturnType<SpeechDeliveryTracker['finish']>>(null);
 
   const joinTranscript = (base: string, speech: string) => [base.trim(), speech.trim()].filter(Boolean).join(base.trim() && speech.trim() ? '\n' : '');
+  // Kept current for callbacks registered by the native speech module.
+  // eslint-disable-next-line react-hooks/refs
   updateAnswerDraftRef.current = updateAnswerDraft;
   const persistDraft = () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); draftTimerRef.current = null; void updateAnswerDraftRef.current(answerRef.current); };
   const setCurrentAnswer = (text: string) => {
@@ -139,7 +141,7 @@ export default function InterviewScreen() {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     ExpoSpeechRecognitionModule.abort();
     restoreAnswerInput(session?.answerDraft ?? '');
-  }, [currentQuestionId, session?.id]);
+  }, [currentQuestionId, session?.answerDraft, session?.id]);
   useEffect(() => {
     if (!currentQuestionId || presentedQuestionRef.current === currentQuestionId || !session) return;
     presentedQuestionRef.current = currentQuestionId;
@@ -214,6 +216,8 @@ export default function InterviewScreen() {
     } catch (error) { track('answer_failed', { question_index: session.currentIndex, input_mode: source, error_code: 'request_failed', latency_ms: Date.now() - submittedAt }, session.interviewId); showMessage('回答分析失败', `${error instanceof Error ? error.message : '请稍后重试。'}\n\n你的回答已保留，可以重新提交。`); }
     finally { submittingRef.current = false; setSubmitting(false); }
   };
+  // The speech end callback must always submit the latest render's answer/session.
+  // eslint-disable-next-line react-hooks/refs
   submitLatestRef.current = submit;
 
   const question = session.questions[session.currentIndex]; const paused = session.status === 'paused';
@@ -221,7 +225,7 @@ export default function InterviewScreen() {
     <View style={styles.top}><View><Text style={styles.mode}>{session.mode === 'formal' ? '正式模拟' : '单项训练'}</Text><Text style={styles.role}>{session.target.title}</Text></View><View style={styles.controls}><Pressable onPress={pause}><Text style={styles.control}>{paused ? '继续' : '暂停'}</Text></Pressable><Pressable onPress={endEarly}><Text style={[styles.control, styles.end]}>结束</Text></Pressable></View></View>
     {question ? <View style={styles.progress}><View style={[styles.progressFill, { width: `${Math.min(100, ((question.main_question_index + 1) / Math.max(1, session.totalMainQuestions)) * 100)}%` }]} /></View> : null}
     {paused ? <Card tone="warning"><Text style={styles.pausedTitle}>面试已暂停</Text><Text style={styles.helper}>录音和流程已停止。点击右上角“继续”回到当前问题。</Text></Card> : <>
-      <Card><Text style={styles.questionLabel}>{question ? `${question.stage} · 主问题 ${question.main_question_index + 1}/${session.totalMainQuestions}${question.is_follow_up ? ` · 追问 ${question.follow_up_count}/2` : ''}` : '准备开始'}</Text><Text style={styles.question}>{question ? cleanUserFacingText(question.text) : '将根据已确认简历和目标岗位生成第一道问题。'}</Text>{question?.resume_evidence && cleanUserFacingText(question.resume_evidence) ? <View style={styles.evidenceBox}><Text style={styles.evidence}>相关经历：{cleanUserFacingText(question.resume_evidence)}</Text></View> : null}{!question ? <Button label={starting ? '正在启动面试…' : '开始面试'} disabled={starting} onPress={startInterview} /> : null}{starting ? <View style={styles.generating}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>第一题为固定开场，请保持此页；网络超时后可再次点击，不会重复占用今日次数。</Text></View> : null}</Card>
+      <Card><Text style={styles.questionLabel}>{question ? `${question.stage} · 主问题 ${question.main_question_index + 1}/${session.totalMainQuestions}${question.is_follow_up ? ` · 追问 ${question.follow_up_count}/2` : ''}` : '准备开始'}</Text>{question ? <Text style={styles.question}>{cleanUserFacingText(question.text)}</Text> : null}{!question ? <Button label={starting ? '正在生成第一题…' : '开始面试'} disabled={starting} onPress={startInterview} /> : null}{starting ? <View style={styles.generating}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>通常需要数秒，请勿重复点击</Text></View> : null}</Card>
       <Card><Text style={styles.answerTitle}>你的回答</Text><Text style={styles.helper}>以语音回答为主。点击结束后会自动提交；文字仅用于实时查看、修正或备用输入。</Text>
         <Button label={recognizing ? '结束回答并自动提交' : answer ? '继续语音回答' : '开始语音回答'} disabled={submitting} variant={recognizing ? 'primary' : 'secondary'} onPress={toggleSpeechRecognition} />
         {speechStatus ? <Text style={styles.saved}>{speechStatus}</Text> : null}
