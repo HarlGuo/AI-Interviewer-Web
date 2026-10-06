@@ -105,6 +105,7 @@ class InterviewTurnAnswer(BaseModel):
     answer: str = Field(min_length=1, max_length=12_000)
     stage: str
     is_follow_up: bool
+    main_question_index: int | None = Field(default=None, ge=0)
     source: Literal["text", "speech_transcript"] = "text"
     delivery_metrics: SpeechDeliveryMetrics | None = None
 

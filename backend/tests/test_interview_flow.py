@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, patch
 
 from app.agents.interview_graph import MAX_AGENT_TURNS, advance_interview, start_interview
 from app.schemas import InterviewAgentStartRequest, InterviewQuestion, InterviewTurnAnswer, InterviewTurnRequest, ResumeSection
-from app.skills.interview import AnswerDecision, generate_main_question, stage_plan
+from app.skills.interview import AnswerDecision, evaluate_answer, generate_main_question, stage_plan
 
-STAGE_LABELS = ["自我介绍", "简历深挖", "行为面试", "岗位专业", "结束反问"]
+STAGE_LABELS = ["自我介绍", "简历深挖", "行为面试", "岗位专业"]
 
 
 def start_request(mode: str = "formal", focus: str | None = None) -> InterviewAgentStartRequest:
@@ -21,7 +21,7 @@ def turn_request(follow_up_count: int, answer: str, main_question_index: int = 1
     return InterviewTurnRequest(
         **start_request().model_dump(exclude={"interview_id"}), interview_id="session-1",
         current_question=InterviewQuestion(id="q1", stage=STAGE_LABELS[main_question_index], text="请介绍该项目。", is_follow_up=follow_up_count > 0, main_question_index=main_question_index, follow_up_count=follow_up_count),
-        answers=[InterviewTurnAnswer(question_id="q1", question="请介绍该项目。", answer=answer, stage="简历深挖", is_follow_up=follow_up_count > 0)],
+        answers=[InterviewTurnAnswer(question_id="q1", question="请介绍该项目。", answer=answer, stage=STAGE_LABELS[main_question_index], is_follow_up=follow_up_count > 0, main_question_index=main_question_index)],
     )
 
 
@@ -41,7 +41,7 @@ def final_message() -> dict:
 
 class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
     def test_stage_plans_are_deterministic(self) -> None:
-        self.assertEqual(len(stage_plan("formal", None)), 5)
+        self.assertEqual(stage_plan("formal", None), ["self-introduction", "resume-deep-dive", "behavioral", "role-specific"])
         self.assertEqual(stage_plan("focused", "behavioral"), ["behavioral"] * 3)
 
     @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
@@ -51,7 +51,7 @@ class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
         generate.return_value = InterviewQuestion(id="q1", stage="自我介绍", text="请结合 CoachCraft 经历做自我介绍。", main_question_index=0, follow_up_count=0)
         result = await start_interview(start_request())
         self.assertEqual(result.source, "resume_driven_agent")
-        self.assertEqual(result.total_main_questions, 5)
+        self.assertEqual(result.total_main_questions, 4)
         self.assertEqual(chat.await_count, 3)
         self.assertIn("conduct_resume_interviews", chat.await_args_list[1].kwargs["messages"][-1]["content"])
         third_messages = chat.await_args_list[2].kwargs["messages"]
@@ -96,6 +96,37 @@ class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
         result = await advance_interview(turn_request(0, "不知道"))
         self.assertFalse(result.next_question.is_follow_up)
         self.assertIn("不知道", result.decision_reason)
+
+    @patch("app.skills.interview.chat_json", new_callable=AsyncMock)
+    async def test_answer_evaluation_only_receives_current_main_question_chain(self, chat: AsyncMock) -> None:
+        chat.return_value = {"action": "next_main", "question": "", "reason": "当前题已回答", "weakness": ""}
+        request = turn_request(1, "当前追问的回答", main_question_index=2)
+        request.answers = [
+            InterviewTurnAnswer(question_id="old", question="上一道主问题", answer="上一题回答", stage="简历深挖", is_follow_up=False, main_question_index=1),
+            InterviewTurnAnswer(question_id="main", question="当前主问题", answer="当前题首次回答", stage="行为面试", is_follow_up=False, main_question_index=2),
+            InterviewTurnAnswer(question_id="follow", question="当前追问", answer="当前追问的回答", stage="行为面试", is_follow_up=True, main_question_index=2),
+        ]
+        await evaluate_answer(request, "当前追问的回答")
+        sent_data = json.loads(chat.await_args.kwargs["messages"][1]["content"].split("\n", 1)[1])
+        self.assertEqual([item["question_id"] for item in sent_data["current_main_question_answers"]], ["main"])
+        self.assertNotIn("previous_answers", sent_data)
+
+    @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
+    async def test_last_formal_main_question_completes_without_closing_question(self, chat: AsyncMock) -> None:
+        chat.side_effect = [activate_interview_skill(), tool_call("evaluate_interview_answer"), final_message()]
+        request = turn_request(0, "我说明了岗位专业方案和结果。", main_question_index=3)
+        with patch("app.skills.interview.evaluate_answer", new_callable=AsyncMock) as evaluate:
+            evaluate.return_value = AnswerDecision(action="next_main", reason="最后一道主问题已经回答充分")
+            result = await advance_interview(request)
+        self.assertTrue(result.completed)
+        self.assertIsNone(result.next_question)
+        self.assertEqual(result.total_main_questions, 4)
+
+    async def test_stale_answer_for_previous_question_is_rejected(self) -> None:
+        request = turn_request(0, "上一题的回答", main_question_index=2)
+        request.answers[-1].question_id = "previous-question"
+        with self.assertRaisesRegex(ValueError, "回答与当前问题不一致"):
+            await advance_interview(request)
 
     @patch("app.agents.interview_graph.chat_with_tools", new_callable=AsyncMock)
     async def test_final_answer_before_required_tool_is_rejected_and_loop_continues(self, chat: AsyncMock) -> None:
@@ -169,7 +200,9 @@ class InterviewAgentTests(unittest.IsolatedAsyncioTestCase):
         result = await generate_main_question(start_request(), "behavioral", 2, previous)
         self.assertEqual(result.resume_evidence, "")
         sent_data = json.loads(chat.await_args.kwargs["messages"][1]["content"].split("\n", 1)[1])
-        self.assertEqual(sent_data["previous_answers"][0]["answer"], "我还负责了简历中没有展开说明的用户访谈。")
+        self.assertEqual(sent_data["previous_questions_for_deduplication_only"], ["请介绍该项目。"])
+        self.assertNotIn("我还负责了简历中没有展开说明的用户访谈。", json.dumps(sent_data, ensure_ascii=False))
+        self.assertIn("独立的新主问题", sent_data["question_boundary"])
 
 
 if __name__ == "__main__":

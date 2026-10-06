@@ -15,8 +15,8 @@ from ..schemas import InterviewAgentStartRequest, InterviewQuestion, InterviewTu
 from .runtime import RUNTIME_SKILLS, RUNTIME_TOOLS, RuntimeSkill, RuntimeTool
 
 MAX_FOLLOW_UPS = 2
-FORMAL_STAGES = ["self-introduction", "resume-deep-dive", "behavioral", "role-specific", "closing"]
-STAGE_LABELS = {"self-introduction": "自我介绍", "resume-deep-dive": "简历深挖", "behavioral": "行为面试", "role-specific": "岗位专业", "closing": "结束反问"}
+FORMAL_STAGES = ["self-introduction", "resume-deep-dive", "behavioral", "role-specific"]
+STAGE_LABELS = {"self-introduction": "自我介绍", "resume-deep-dive": "简历深挖", "behavioral": "行为面试", "role-specific": "岗位专业"}
 UNKNOWN_ANSWER = re.compile(r"^(不知道|不清楚|不会|不了解|没有(?:相关)?经历|暂时没有|想不起来)[。.!！\s]*$")
 
 
@@ -48,7 +48,18 @@ def validate_turn(request: InterviewTurnRequest, plan: list[str]) -> str:
     current = request.current_question
     if current.main_question_index >= len(plan) or current.stage != STAGE_LABELS[plan[current.main_question_index]]:
         raise ValueError("当前问题与面试计划不一致")
-    answer = request.answers[-1].answer.strip() if request.answers else ""
+    if not request.answers:
+        raise ValueError("缺少当前问题的回答")
+    latest = request.answers[-1]
+    if (
+        latest.question_id != current.id
+        or latest.question != current.text
+        or latest.stage != current.stage
+        or latest.is_follow_up != current.is_follow_up
+        or latest.main_question_index not in {None, current.main_question_index}
+    ):
+        raise ValueError("提交的回答与当前问题不一致")
+    answer = latest.answer.strip()
     if not answer:
         raise ValueError("缺少当前问题的回答")
     return answer
@@ -68,7 +79,8 @@ def _safe_resume(sections: list[ResumeSection]) -> list[dict[str, str]]:
 async def generate_main_question(request: InterviewAgentStartRequest, stage: str, index: int, answers: list[object]) -> InterviewQuestion:
     data = {"stage": stage, "stage_label": STAGE_LABELS[stage], "main_question_number": index + 1, "target_role": request.target_role,
             "job_description": request.job_description, "confirmed_resume": _safe_resume(request.resume_sections),
-            "previous_answers": [{"question": getattr(x, "question", "")[:1000], "answer": getattr(x, "answer", "")[:4000]} for x in answers[-6:]]}
+            "question_boundary": "生成独立的新主问题；此前主问题已经结束，不得继续追问此前回答",
+            "previous_questions_for_deduplication_only": [getattr(x, "question", "")[:1000] for x in answers[-6:]]}
     generated = GeneratedQuestion.model_validate(await chat_json(messages=[{"role": "system", "content": QUESTION_SYSTEM_PROMPT}, {"role": "user", "content": "输入 JSON：\n" + json.dumps(data, ensure_ascii=False)}], temperature=0.2, max_tokens=1200, purpose="question_generation"))
     resume_text = "\n".join(x.content for x in request.resume_sections if x.title not in {"基本信息", "其他"})
     evidence = generated.resume_evidence if generated.resume_evidence and generated.resume_evidence in resume_text else ""
@@ -81,9 +93,23 @@ async def evaluate_answer(request: InterviewTurnRequest, latest_answer: str) -> 
         return AnswerDecision(action="next_main", reason=f"已达到单道主问题最多 {MAX_FOLLOW_UPS} 次追问限制，进入下一阶段。", weakness="当前主问题已完成规定的追问次数")
     if UNKNOWN_ANSWER.fullmatch(latest_answer):
         return AnswerDecision(action="next_main", reason="用户明确表示不知道或没有相关经历", weakness="当前问题缺少可用回答证据")
+    prior_answers = request.answers[:-1]
+    if current.is_follow_up:
+        indexed = [x for x in prior_answers if x.main_question_index == current.main_question_index]
+        if indexed:
+            current_answers = indexed
+        else:
+            current_answers = []
+            for item in reversed(prior_answers):
+                current_answers.append(item)
+                if not item.is_follow_up:
+                    break
+            current_answers.reverse()
+    else:
+        current_answers = []
     data = {"target_role": request.target_role, "job_description": request.job_description, "confirmed_resume": _safe_resume(request.resume_sections),
             "current_question": current.model_dump(), "latest_answer": latest_answer,
-            "previous_answers": [{**x.model_dump(), "answer": x.answer[:4000]} for x in request.answers[-11:-1]],
+            "current_main_question_answers": [{**x.model_dump(), "answer": x.answer[:4000]} for x in current_answers[-2:]],
             "remaining_follow_ups": MAX_FOLLOW_UPS - current.follow_up_count}
     return AnswerDecision.model_validate(await chat_json(messages=[{"role": "system", "content": EVALUATION_SYSTEM_PROMPT}, {"role": "user", "content": "输入 JSON：\n" + json.dumps(data, ensure_ascii=False)}], temperature=0.2, max_tokens=1200, purpose="answer_evaluation"))
 
@@ -141,7 +167,8 @@ RUNTIME_SKILLS.register(RuntimeSkill(
     ),
     acceptance_criteria=(
         "首题与已确认简历和目标岗位相关",
-        "追问紧扣最新回答且单道主问题最多两次",
+        "追问只读取当前主问题的回答链，紧扣最新回答且单道主问题最多两次",
+        "正式面试在岗位专业题结束后完成，不设置用户反问阶段",
         "充分回答推进、未知回答不反复施压、最终结果可恢复且可追溯",
     ),
 ))

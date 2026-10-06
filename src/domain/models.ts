@@ -37,7 +37,7 @@ export type SpeechDeliveryMetrics = {
   duration_ms: number; voiced_duration_ms: number; pause_count: number; average_pause_ms: number;
   longest_pause_ms: number; speech_rate_cpm: number; average_volume: number; volume_variation: number; sample_count: number;
 };
-export type InterviewAnswer = { questionId: string; question: string; answer: string; stage: string; isFollowUp: boolean; source: AnswerSource; deliveryMetrics?: SpeechDeliveryMetrics | null };
+export type InterviewAnswer = { questionId: string; question: string; answer: string; stage: string; isFollowUp: boolean; mainQuestionIndex?: number; source: AnswerSource; deliveryMetrics?: SpeechDeliveryMetrics | null };
 export type InterviewSession = {
   id: string; mode: InterviewMode; focus: TrainingFocus | null; target: TargetRole; resumeId: string | null;
   status: SessionStatus; interviewId: string | null; questions: InterviewQuestion[]; currentIndex: number; answers: InterviewAnswer[]; totalMainQuestions: number;

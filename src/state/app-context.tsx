@@ -119,7 +119,7 @@ export function AppProvider({ children }: PropsWithChildren) {
         if (!session) return current;
         const question = session.questions[session.currentIndex];
         if (!question) return current;
-        const answers = [...session.answers, { questionId: question.id, question: question.text, answer, stage: question.stage, isFollowUp: question.is_follow_up, source, deliveryMetrics }];
+        const answers = [...session.answers, { questionId: question.id, question: question.text, answer, stage: question.stage, isFollowUp: question.is_follow_up, mainQuestionIndex: question.main_question_index, source, deliveryMetrics }];
         const questions = nextQuestion ? [...session.questions, nextQuestion] : session.questions;
         return { ...current, quotaConsumedOn: completed ? beijingDate() : current.quotaConsumedOn, activeSession: { ...session, answers, questions, currentIndex: nextQuestion ? session.currentIndex + 1 : session.currentIndex, status: completed ? 'completed' : 'active', answerDraft: '', audioUri: null, updatedAt: new Date().toISOString() } };
       });
