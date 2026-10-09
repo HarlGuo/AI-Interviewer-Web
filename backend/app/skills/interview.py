@@ -5,14 +5,14 @@ import re
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from ..ai_resume_reviewer import EMAIL_PATTERN, PHONE_PATTERN
 from ..llm.deepseek import chat_json
 from ..prompts.interview import EVALUATION_SYSTEM_PROMPT, QUESTION_SYSTEM_PROMPT
 from ..presentation import clean_user_facing_text
 from ..schemas import InterviewAgentStartRequest, InterviewQuestion, InterviewTurnRequest, ResumeSection
-from .runtime import RUNTIME_SKILLS, RUNTIME_TOOLS, RuntimeSkill, RuntimeTool
+from .runtime import RUNTIME_SKILLS, RuntimeSkill
 
 MAX_FOLLOW_UPS = 2
 FORMAL_STAGES = ["self-introduction", "resume-deep-dive", "behavioral", "role-specific"]
@@ -30,14 +30,6 @@ class AnswerDecision(BaseModel):
     question: str = ""
     reason: str = Field(min_length=1, max_length=500)
     weakness: str = ""
-
-
-class GenerateQuestionArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class EvaluateAnswerArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
 
 def stage_plan(mode: str, focus: str | None) -> list[str]:
@@ -65,7 +57,7 @@ def validate_turn(request: InterviewTurnRequest, plan: list[str]) -> str:
     return answer
 
 
-def _safe_resume(sections: list[ResumeSection]) -> list[dict[str, str]]:
+def safe_resume_sections(sections: list[ResumeSection]) -> list[dict[str, str]]:
     safe, remaining = [], 30_000
     for section in sections:
         if section.title in {"基本信息", "其他"} or remaining <= 0:
@@ -78,7 +70,7 @@ def _safe_resume(sections: list[ResumeSection]) -> list[dict[str, str]]:
 
 async def generate_main_question(request: InterviewAgentStartRequest, stage: str, index: int, answers: list[object]) -> InterviewQuestion:
     data = {"stage": stage, "stage_label": STAGE_LABELS[stage], "main_question_number": index + 1, "target_role": request.target_role,
-            "job_description": request.job_description, "confirmed_resume": _safe_resume(request.resume_sections),
+            "job_description": request.job_description, "confirmed_resume": safe_resume_sections(request.resume_sections),
             "question_boundary": "生成独立的新主问题；此前主问题已经结束，不得继续追问此前回答",
             "previous_questions_for_deduplication_only": [getattr(x, "question", "")[:1000] for x in answers[-6:]]}
     generated = GeneratedQuestion.model_validate(await chat_json(messages=[{"role": "system", "content": QUESTION_SYSTEM_PROMPT}, {"role": "user", "content": "输入 JSON：\n" + json.dumps(data, ensure_ascii=False)}], temperature=0.2, max_tokens=1200, purpose="question_generation"))
@@ -99,6 +91,8 @@ async def evaluate_answer(request: InterviewTurnRequest, latest_answer: str) -> 
         if indexed:
             current_answers = indexed
         else:
+            # Backward compatibility for locally restored sessions saved before
+            # main_question_index was included on every submitted answer.
             current_answers = []
             for item in reversed(prior_answers):
                 current_answers.append(item)
@@ -107,46 +101,24 @@ async def evaluate_answer(request: InterviewTurnRequest, latest_answer: str) -> 
             current_answers.reverse()
     else:
         current_answers = []
-    data = {"target_role": request.target_role, "job_description": request.job_description, "confirmed_resume": _safe_resume(request.resume_sections),
+    data = {"target_role": request.target_role, "job_description": request.job_description, "confirmed_resume": safe_resume_sections(request.resume_sections),
             "current_question": current.model_dump(), "latest_answer": latest_answer,
             "current_main_question_answers": [{**x.model_dump(), "answer": x.answer[:4000]} for x in current_answers[-2:]],
             "remaining_follow_ups": MAX_FOLLOW_UPS - current.follow_up_count}
     return AnswerDecision.model_validate(await chat_json(messages=[{"role": "system", "content": EVALUATION_SYSTEM_PROMPT}, {"role": "user", "content": "输入 JSON：\n" + json.dumps(data, ensure_ascii=False)}], temperature=0.2, max_tokens=1200, purpose="answer_evaluation"))
 
 
-async def _run_generate_question(context: dict, arguments: BaseModel) -> InterviewQuestion:
-    GenerateQuestionArguments.model_validate(arguments)
-    return await generate_main_question(context["request"], context["stage"], context["main_question_index"], context["answers"])
-
-
-async def _run_evaluate_answer(context: dict, arguments: BaseModel) -> AnswerDecision:
-    EvaluateAnswerArguments.model_validate(arguments)
-    return await evaluate_answer(context["request"], context["latest_answer"])
-
-
-RUNTIME_TOOLS.register(RuntimeTool(
-    name="generate_interview_question",
-    description="当面试需要开始或进入下一主阶段时，依据已确认简历、目标岗位、JD 与既往回答生成一道个性化主问题。不能用于分析当前回答。",
-    input_model=GenerateQuestionArguments,
-    handler=_run_generate_question,
-))
-RUNTIME_TOOLS.register(RuntimeTool(
-    name="evaluate_interview_answer",
-    description="当候选人已经回答当前问题且尚未触发确定性跳过规则时，判断回答是否充分，并返回追问或进入下一主问题的建议。不能用于生成新的主问题。",
-    input_model=EvaluateAnswerArguments,
-    handler=_run_evaluate_answer,
-))
-
 RUNTIME_SKILLS.register(RuntimeSkill(
     name="conduct_resume_interviews",
     description="依据用户已确认的简历、目标岗位、JD 与真实回答开展个性化模拟面试，判断回答充分性，进行有限追问并推进面试阶段。",
     instructions="""你正在执行“简历驱动动态面试”Skill。
-- 开始面试时调用 generate_interview_question 生成第一道主问题。
-- 收到回答时先调用 evaluate_interview_answer。
-- 若结果为 follow_up，本轮信息已足够；若为 next_main 且仍有下一阶段，继续调用 generate_interview_question；若已完成全部阶段，本轮信息已足够。
+- 先按需调用代码 Tools 加载已确认简历、岗位能力和面试历史。
+- 开始面试时委派 Question Generator Sub-agent 生成第一道主问题。
+- 收到回答时委派 Answer Evaluator Sub-agent 分析；若为 next_main 且仍有下一阶段，再委派 Question Generator Sub-agent。
+- 若分析结果为 follow_up 或全部主问题完成，本轮信息已足够。
 - 每轮只返回一道问题。只能依据已确认简历、JD 和用户真实回答，不得编造事实。
 - 阶段索引、追问次数和完成条件由程序控制，不得自行修改。""",
-    tool_names=("generate_interview_question", "evaluate_interview_answer"),
+    tool_names=("load_confirmed_resume", "load_job_competencies", "get_interview_history"),
     supported_events=("interview_started", "answer_submitted"),
     input_contract=(
         "resume_review_status 必须为 ai_verified，且包含用户已确认的简历章节",

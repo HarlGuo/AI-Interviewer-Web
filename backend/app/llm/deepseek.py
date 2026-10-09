@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -13,6 +17,31 @@ from ..telemetry_context import get_telemetry_context
 
 class LLMNotConfiguredError(RuntimeError):
     pass
+
+
+@dataclass
+class ModelCallBudget:
+    limit: int
+    used: int = 0
+
+    def consume(self) -> None:
+        if self.used >= self.limit:
+            raise RuntimeError(f"本轮模型 HTTP 调用超过最多 {self.limit} 次")
+        self.used += 1
+
+
+_MODEL_CALL_BUDGET: ContextVar[ModelCallBudget | None] = ContextVar("model_call_budget", default=None)
+
+
+@contextmanager
+def model_call_budget(limit: int) -> Iterator[ModelCallBudget]:
+    """Count every real model HTTP attempt, including specialist retries."""
+    budget = ModelCallBudget(limit=limit)
+    token = _MODEL_CALL_BUDGET.set(budget)
+    try:
+        yield budget
+    finally:
+        _MODEL_CALL_BUDGET.reset(token)
 
 
 PURPOSE_OPERATIONS = {
@@ -92,6 +121,9 @@ async def _send(
     payload: dict[str, Any], *, read_timeout: float,
     purpose: str = "question_generation", attempt_no: int = 1,
 ) -> dict[str, Any]:
+    budget = _MODEL_CALL_BUDGET.get()
+    if budget is not None:
+        budget.consume()
     headers = {"Authorization": f"Bearer {settings.deepseek_api_key}", "Content-Type": "application/json"}
     timeout = httpx.Timeout(connect=15, read=read_timeout, write=30, pool=15)
     started = time.monotonic()
