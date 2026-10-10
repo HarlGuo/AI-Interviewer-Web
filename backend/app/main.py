@@ -113,7 +113,7 @@ async def interview_turn(request: InterviewTurnRequest, _user: CurrentUser = Dep
     await require_approved(_user)
     context_token = set_telemetry_context(user_id=_user.id, interview_id=request.interview_id)
     try:
-        result = await advance_interview(request)
+        result = await advance_interview(request, user_id=_user.id)
         await record_interview_turn(_user.id, request, result)
         return result
     except (DeepSeekNotConfiguredError, LLMNotConfiguredError) as error:

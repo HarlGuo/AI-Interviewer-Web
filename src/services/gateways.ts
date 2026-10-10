@@ -6,7 +6,7 @@ const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/
 const API_BASE_URL = configuredApiBaseUrl
   ?? (typeof window !== 'undefined' ? window.location.origin : undefined);
 const REQUEST_TIMEOUT_MS = 65_000;
-const INTERVIEW_TURN_TIMEOUT_MS = 130_000;
+const INTERVIEW_TURN_TIMEOUT_MS = 240_000;
 const REPORT_TIMEOUT_MS = 210_000;
 
 export class ApiNotConfiguredError extends Error {
@@ -59,11 +59,12 @@ export const interviewGateway = {
   async start(session: InterviewSession, resume: ResumeFile): Promise<{ interview_id: string; question: InterviewQuestion; total_main_questions: number; source: string }> {
     return parseResponse(await request(apiUrl('/v1/interviews'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, resume_id: resume.id, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus }) }));
   },
-  async turn(session: InterviewSession, resume: ResumeFile, answer: string, source: AnswerSource, deliveryMetrics: SpeechDeliveryMetrics | null): Promise<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number }> {
+  async turn(session: InterviewSession, resume: ResumeFile, answer: string, source: AnswerSource, deliveryMetrics: SpeechDeliveryMetrics | null): Promise<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number; report: InterviewReport | null }> {
     const current = session.questions[session.currentIndex];
     const answers = [...session.answers.map((item) => ({ question_id: item.questionId, question: item.question, answer: item.answer, stage: item.stage, is_follow_up: item.isFollowUp, main_question_index: item.mainQuestionIndex, source: item.source ?? 'text', delivery_metrics: item.deliveryMetrics ?? null })), { question_id: current.id, question: current.text, answer, stage: current.stage, is_follow_up: current.is_follow_up, main_question_index: current.main_question_index, source, delivery_metrics: deliveryMetrics }];
-    const result = await parseResponse<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number }>(await request(apiUrl('/v1/interviews/turn'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus, current_question: current, answers }) }, INTERVIEW_TURN_TIMEOUT_MS));
+    const result = await parseResponse<{ next_question: InterviewQuestion | null; completed: boolean; decision_reason: string; weakness: string; total_main_questions: number; report: InterviewReport | null }>(await request(apiUrl('/v1/interviews/turn'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interview_id: session.interviewId, target_role: session.target.title, job_description: session.target.jd, mode: session.mode, focus: session.focus, resume_sections: resume.sections, resume_review_status: resume.reviewStatus, current_question: current, answers }) }, INTERVIEW_TURN_TIMEOUT_MS));
     if (!result.completed && !result.next_question) throw new Error('后端未返回下一道问题，请重新提交当前回答。');
+    if (result.completed && !result.report) throw new Error('面试已完成，但 Agent 未返回通过校验的报告，请重试。');
     return result;
   },
   async report(session: InterviewSession): Promise<InterviewReport> {

@@ -116,14 +116,6 @@ class InterviewTurnRequest(InterviewAgentStartRequest):
     answers: list[InterviewTurnAnswer] = Field(default_factory=list, max_length=30)
 
 
-class InterviewTurnResponse(BaseModel):
-    next_question: InterviewQuestion | None
-    completed: bool
-    decision_reason: str
-    weakness: str = ""
-    total_main_questions: int
-
-
 class AnswerEvidence(BaseModel):
     question_id: str
     question: str
@@ -163,6 +155,15 @@ class InterviewReport(BaseModel):
     evidence_notice: str
     dimensions: list[DimensionScore]
     question_reviews: list[QuestionReview]
+
+
+class InterviewTurnResponse(BaseModel):
+    next_question: InterviewQuestion | None
+    completed: bool
+    decision_reason: str
+    weakness: str = ""
+    total_main_questions: int
+    report: InterviewReport | None = None
 
 
 AnalyticsEventName = Literal[

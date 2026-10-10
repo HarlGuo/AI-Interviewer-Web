@@ -16,7 +16,7 @@ import { useApp } from '@/state/app-context';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 export default function InterviewScreen() {
-  const { state, hydrated, activateSession, ensureInterviewId, updateAnswerDraft, applyInterviewTurn, setSessionStatus, clearSession } = useApp();
+  const { state, hydrated, activateSession, ensureInterviewId, updateAnswerDraft, applyInterviewTurn, setSessionStatus, saveReport, clearSession } = useApp();
   const session = state.activeSession;
   const [answer, setAnswer] = useState(session?.answerDraft ?? ''); const [starting, setStarting] = useState(false); const [submitting, setSubmitting] = useState(false); const [recognizing, setRecognizing] = useState(false); const [speechStatus, setSpeechStatus] = useState(''); const startLock = useRef(false);
   const [feedbackType, setFeedbackType] = useState<'completed' | 'ended_early' | null>(null); const [feedbackSubmitting, setFeedbackSubmitting] = useState(false); const [feedbackError, setFeedbackError] = useState(''); const [finishWithoutReport, setFinishWithoutReport] = useState(false);
@@ -210,6 +210,10 @@ export default function InterviewScreen() {
       const result = await interviewGateway.turn(session, state.resume, submittedAnswer, source, deliveryMetrics);
       keepListeningRef.current = false; ExpoSpeechRecognitionModule.abort();
       await applyInterviewTurn(submittedAnswer, source, deliveryMetrics, result.next_question, result.completed); resetAnswerInput(); speechUsedRef.current = false;
+      if (result.report) {
+        await saveReport(result.report);
+        track('report_generation_succeeded', { source: 'interview_agent_loop', latency_ms: Date.now() - submittedAt }, session.interviewId);
+      }
       track('answer_accepted', { question_index: session.currentIndex, is_follow_up: session.questions[session.currentIndex]?.is_follow_up ?? false, input_mode: source, latency_ms: Date.now() - submittedAt }, session.interviewId);
       if (result.next_question?.is_follow_up) track('followup_triggered', { follow_up_count: result.next_question.follow_up_count }, session.interviewId);
       if (result.completed) { track('interview_completed', { answered_count: session.answers.length + 1, completion_type: 'completed' }, session.interviewId); showFeedback('completed'); }

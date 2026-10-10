@@ -60,6 +60,7 @@ PURPOSE_OPERATIONS = {
 
 async def chat_with_tools(
     *, messages: list[dict[str, Any]], tools: list[dict[str, Any]], max_tokens: int = 1200,
+    purpose: str = "agent_loop",
 ) -> dict[str, Any]:
     """Run one non-thinking model step and return its assistant message, including tool calls."""
     if not settings.deepseek_api_key:
@@ -75,7 +76,12 @@ async def chat_with_tools(
         "temperature": 0,
         "max_tokens": max_tokens,
     }
-    response_data = await _send(payload, read_timeout=75, purpose="agent_loop", attempt_no=1)
+    response_data = await _send(
+        payload,
+        read_timeout=180 if purpose == "report_generation" else 75,
+        purpose=purpose,
+        attempt_no=1,
+    )
     try:
         message = response_data["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as error:
